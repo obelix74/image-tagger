@@ -112,12 +112,16 @@ export class BatchProcessingService {
       await ImageProcessingService.ensureDirectoryExists(uploadDir);
       await ImageProcessingService.ensureDirectoryExists(thumbnailDir);
 
-      // Process each file
-      for (const filePath of imageFiles) {
+      // Process each file sequentially (including AI analysis)
+      for (let i = 0; i < imageFiles.length; i++) {
+        const filePath = imageFiles[i];
+        console.log(`📸 Processing image ${i + 1}/${imageFiles.length}: ${path.basename(filePath)}`);
+
         try {
           await this.processFile(filePath, batchJob, uploadDir, thumbnailDir);
+          console.log(`✅ Successfully processed image ${i + 1}/${imageFiles.length}`);
         } catch (error) {
-          console.error(`Error processing file ${filePath}:`, error);
+          console.error(`❌ Error processing file ${filePath}:`, error);
           batchJob.result.errorFiles++;
           batchJob.result.errors.push({
             file: filePath,
@@ -125,15 +129,24 @@ export class BatchProcessingService {
             type: 'processing'
           });
         }
-        
+
         batchJob.result.processedFiles++;
+
+        // Log progress
+        const progress = Math.round((batchJob.result.processedFiles / batchJob.result.totalFiles) * 100);
+        console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%)`);
       }
 
       // Mark batch as completed
       batchJob.result.status = 'completed';
       batchJob.result.endTime = new Date().toISOString();
 
-      console.log(`Batch processing completed. Processed: ${batchJob.result.successfulFiles}, Duplicates: ${batchJob.result.duplicateFiles}, Errors: ${batchJob.result.errorFiles}`);
+      console.log(`🎉 Batch processing completed!`);
+      console.log(`📊 Final Results:`);
+      console.log(`   ✅ Successful: ${batchJob.result.successfulFiles}`);
+      console.log(`   🔄 Duplicates: ${batchJob.result.duplicateFiles}`);
+      console.log(`   ❌ Errors: ${batchJob.result.errorFiles}`);
+      console.log(`   📁 Total Files: ${batchJob.result.totalFiles}`);
 
     } catch (error) {
       console.error('Batch processing failed:', error);
@@ -152,10 +165,12 @@ export class BatchProcessingService {
 
     async function scanDirectory(dirPath: string): Promise<void> {
       try {
+        console.log(`Scanning directory: "${dirPath}"`);
         const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
         for (const entry of entries) {
           const fullPath = path.join(dirPath, entry.name);
+          console.log(`Processing entry: "${entry.name}" -> "${fullPath}"`);
 
           if (entry.isDirectory()) {
             // Recursively scan subdirectories
@@ -164,16 +179,25 @@ export class BatchProcessingService {
             // Check if file is a supported image format
             const ext = path.extname(entry.name).toLowerCase();
             if (BatchProcessingService.SUPPORTED_EXTENSIONS.includes(ext)) {
+              console.log(`Found supported image: "${fullPath}"`);
               imageFiles.push(fullPath);
             }
           }
         }
       } catch (error) {
-        console.warn(`Failed to scan directory ${dirPath}:`, error);
+        console.error(`Failed to scan directory "${dirPath}":`, error);
+        // Re-throw the error if it's a critical directory access issue
+        if (error instanceof Error && error.message.includes('ENOENT')) {
+          throw new Error(`Directory not found: "${dirPath}"`);
+        }
+        if (error instanceof Error && error.message.includes('EACCES')) {
+          throw new Error(`Permission denied accessing directory: "${dirPath}"`);
+        }
       }
     }
 
     await scanDirectory(folderPath);
+    console.log(`Total image files discovered: ${imageFiles.length}`);
     return imageFiles;
   }
 
@@ -183,13 +207,22 @@ export class BatchProcessingService {
     uploadDir: string,
     thumbnailDir: string
   ): Promise<void> {
+    console.log(`Processing file: "${filePath}"`);
     const fileName = path.basename(filePath);
-    const stats = await fs.stat(filePath);
+
+    let stats;
+    try {
+      stats = await fs.stat(filePath);
+    } catch (error) {
+      console.error(`Failed to get file stats for "${filePath}":`, error);
+      throw new Error(`Cannot access file: ${filePath}`);
+    }
 
     // Check for duplicates if enabled
     if (batchJob.options.skipDuplicates) {
       const existingImage = await DatabaseService.findDuplicateImage(fileName, stats.size);
       if (existingImage) {
+        console.log(`Skipping duplicate file: "${filePath}"`);
         batchJob.result.duplicateFiles++;
         batchJob.result.errors.push({
           file: filePath,
@@ -205,7 +238,13 @@ export class BatchProcessingService {
     const destinationPath = path.join(uploadDir, uniqueFilename);
 
     // Copy file to upload directory
-    await fs.copyFile(filePath, destinationPath);
+    try {
+      console.log(`Copying file from "${filePath}" to "${destinationPath}"`);
+      await fs.copyFile(filePath, destinationPath);
+    } catch (error) {
+      console.error(`Failed to copy file from "${filePath}" to "${destinationPath}":`, error);
+      throw new Error(`Failed to copy file: ${filePath}`);
+    }
 
     try {
       // Process the image
@@ -245,8 +284,10 @@ export class BatchProcessingService {
         batchJob.result.processedImages.push(savedImage);
         batchJob.result.successfulFiles++;
 
-        // Start background AI analysis
-        this.processImageAnalysisInBackground(imageId, processedResult.processedPath);
+        // Wait for AI analysis to complete before processing next image
+        console.log(`Starting sequential AI analysis for image ${imageId}`);
+        await this.processImageAnalysisInBackground(imageId, processedResult.processedPath);
+        console.log(`Completed AI analysis for image ${imageId}, ready for next image`);
       }
 
     } catch (error) {
@@ -265,8 +306,10 @@ export class BatchProcessingService {
       // Update status to processing
       await DatabaseService.updateImageStatus(imageId, 'processing');
 
-      // Analyze with Gemini
-      const analysis = await GeminiService.analyzeImageFromPath(imagePath);
+      console.log(`Starting AI analysis for image ${imageId}`);
+
+      // Analyze with Gemini (this will now throw errors instead of returning fallback)
+      const analysis = await GeminiService.analyzeImageFromPath(imagePath, false);
 
       // Save analysis to database
       const analysisData = {
@@ -279,13 +322,21 @@ export class BatchProcessingService {
       };
       await DatabaseService.insertAnalysis(analysisData);
 
-      // Update status to completed
+      // Update status to completed only if AI analysis succeeded
       await DatabaseService.updateImageStatus(imageId, 'completed');
 
-      console.log(`Image ${imageId} processed successfully`);
+      console.log(`✅ AI analysis completed successfully for image ${imageId}`);
     } catch (error) {
-      console.error(`Failed to process image ${imageId}:`, error);
-      await DatabaseService.updateImageStatus(imageId, 'error', error instanceof Error ? error.message : 'Processing failed');
+      console.error(`❌ AI analysis failed for image ${imageId}:`, error);
+
+      // Update status to error with detailed error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown AI analysis error';
+      await DatabaseService.updateImageStatus(imageId, 'error', `AI analysis failed: ${errorMessage}`);
+
+      console.log(`🚫 Image ${imageId} marked as failed due to AI analysis error`);
+
+      // Re-throw the error so batch processing can handle it appropriately
+      throw error;
     }
   }
 

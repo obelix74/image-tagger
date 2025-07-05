@@ -110,12 +110,79 @@ class DatabaseService {
             return null;
         return this.mapRowToImageMetadata(row);
     }
-    static async getAllImages() {
+    static async getAllImages(page, limit) {
+        const all = (0, util_1.promisify)(this.db.all.bind(this.db));
+        const get = (0, util_1.promisify)(this.db.get.bind(this.db));
+        // Get total count
+        const countResult = await get(`SELECT COUNT(*) as total FROM images`);
+        const total = countResult.total;
+        if (page !== undefined && limit !== undefined) {
+            // Paginated query
+            const offset = (page - 1) * limit;
+            const rows = await all(`
+        SELECT * FROM images
+        ORDER BY uploaded_at DESC
+        LIMIT ? OFFSET ?
+      `, [limit, offset]);
+            const totalPages = Math.ceil(total / limit);
+            return {
+                images: rows.map(this.mapRowToImageMetadata),
+                total,
+                page,
+                totalPages
+            };
+        }
+        else {
+            // Non-paginated query (backward compatibility)
+            const rows = await all(`
+        SELECT * FROM images
+        ORDER BY uploaded_at DESC
+      `);
+            return {
+                images: rows.map(this.mapRowToImageMetadata),
+                total,
+                page: 1,
+                totalPages: 1
+            };
+        }
+    }
+    static async findDuplicateImage(originalName, fileSize) {
+        const get = (0, util_1.promisify)(this.db.get.bind(this.db));
+        // Exclude images with 'error' status from duplicate checking
+        const row = await get(`
+      SELECT * FROM images
+      WHERE original_name = ? AND file_size = ? AND status != 'error'
+      ORDER BY uploaded_at DESC
+      LIMIT 1
+    `, [originalName, fileSize]);
+        if (!row)
+            return null;
+        return this.mapRowToImageMetadata(row);
+    }
+    static async searchImagesByKeyword(keyword) {
         const all = (0, util_1.promisify)(this.db.all.bind(this.db));
         const rows = await all(`
-      SELECT * FROM images
-      ORDER BY uploaded_at DESC
-    `);
+      SELECT DISTINCT i.* FROM images i
+      INNER JOIN gemini_analysis ga ON i.id = ga.image_id
+      WHERE ga.keywords LIKE ?
+      ORDER BY i.uploaded_at DESC
+    `, [`%"${keyword}"%`]);
+        return rows.map(this.mapRowToImageMetadata);
+    }
+    static async searchImages(searchTerm) {
+        const all = (0, util_1.promisify)(this.db.all.bind(this.db));
+        const searchPattern = `%${searchTerm}%`;
+        const rows = await all(`
+      SELECT DISTINCT i.* FROM images i
+      LEFT JOIN gemini_analysis ga ON i.id = ga.image_id
+      WHERE
+        i.original_name LIKE ? OR
+        i.filename LIKE ? OR
+        ga.description LIKE ? OR
+        ga.caption LIKE ? OR
+        ga.keywords LIKE ?
+      ORDER BY i.uploaded_at DESC
+    `, [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern]);
         return rows.map(this.mapRowToImageMetadata);
     }
     static async insertAnalysis(analysisData) {
@@ -154,7 +221,7 @@ class DatabaseService {
             description: row.description,
             caption: row.caption,
             keywords: JSON.parse(row.keywords),
-            confidence: row.confidence,
+            confidence: row.confidence ? parseFloat(row.confidence) : undefined,
             analysisDate: row.analysis_date
         };
     }

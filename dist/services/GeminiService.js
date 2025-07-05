@@ -15,9 +15,24 @@ class GeminiService {
         this.genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
         this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     }
-    static async analyzeImage(imageBuffer, mimeType) {
+    static async rateLimitDelay() {
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+        if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
+            const delayTime = this.MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+            console.log(`Rate limiting: waiting ${delayTime}ms before next Gemini request`);
+            await new Promise(resolve => setTimeout(resolve, delayTime));
+        }
+        this.lastRequestTime = Date.now();
+    }
+    static async analyzeImage(imageBuffer, mimeType, useFallback = false) {
         if (!this.model) {
             this.initialize();
+        }
+        // If fallback is requested, return fallback immediately
+        if (useFallback) {
+            console.log('Using fallback analysis as requested');
+            return this.getFallbackAnalysis();
         }
         const prompt = `
 Analyze this image and provide the following information in JSON format:
@@ -37,43 +52,60 @@ Requirements:
 
 Please ensure the JSON is valid and properly formatted.
     `;
-        try {
-            const imagePart = {
-                inlineData: {
-                    data: imageBuffer.toString('base64'),
-                    mimeType: mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
+        let lastError = null;
+        for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+            try {
+                // Apply rate limiting
+                await this.rateLimitDelay();
+                console.log(`Gemini API request attempt ${attempt}/${this.MAX_RETRIES}`);
+                const imagePart = {
+                    inlineData: {
+                        data: imageBuffer.toString('base64'),
+                        mimeType: mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
+                    }
+                };
+                const result = await this.model.generateContent([prompt, imagePart]);
+                const response = await result.response;
+                const text = response.text();
+                // Extract JSON from the response
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) {
+                    throw new Error('No valid JSON found in Gemini response');
                 }
-            };
-            const result = await this.model.generateContent([prompt, imagePart]);
-            const response = await result.response;
-            const text = response.text();
-            // Extract JSON from the response
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) {
-                throw new Error('No valid JSON found in Gemini response');
+                const analysisData = JSON.parse(jsonMatch[0]);
+                // Validate the response structure
+                if (!analysisData.description || !analysisData.caption || !Array.isArray(analysisData.keywords)) {
+                    throw new Error('Invalid response structure from Gemini API');
+                }
+                console.log(`Gemini API request successful on attempt ${attempt}`);
+                return {
+                    description: analysisData.description,
+                    caption: analysisData.caption,
+                    keywords: analysisData.keywords,
+                    confidence: analysisData.confidence || 0.8
+                };
             }
-            const analysisData = JSON.parse(jsonMatch[0]);
-            // Validate the response structure
-            if (!analysisData.description || !analysisData.caption || !Array.isArray(analysisData.keywords)) {
-                throw new Error('Invalid response structure from Gemini API');
+            catch (error) {
+                lastError = error;
+                console.error(`Gemini API error on attempt ${attempt}:`, error);
+                // If this is the last attempt, throw the error
+                if (attempt === this.MAX_RETRIES) {
+                    break;
+                }
+                // Wait before retrying (exponential backoff)
+                const retryDelay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                console.log(`Retrying in ${retryDelay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
             }
-            return {
-                description: analysisData.description,
-                caption: analysisData.caption,
-                keywords: analysisData.keywords,
-                confidence: analysisData.confidence || 0.8
-            };
         }
-        catch (error) {
-            console.error('Gemini API error:', error);
-            // Fallback analysis if Gemini fails
-            return this.getFallbackAnalysis();
-        }
+        // All retries failed, throw the last error
+        console.error(`Gemini API failed after ${this.MAX_RETRIES} attempts`);
+        throw new Error(`Gemini AI analysis failed: ${lastError?.message || 'Unknown error'}`);
     }
-    static async analyzeImageFromPath(imagePath) {
+    static async analyzeImageFromPath(imagePath, useFallback = false) {
         const imageBuffer = await promises_1.default.readFile(imagePath);
         const mimeType = this.getMimeTypeFromPath(imagePath);
-        return this.analyzeImage(imageBuffer, mimeType);
+        return this.analyzeImage(imageBuffer, mimeType, useFallback);
     }
     static getMimeTypeFromPath(imagePath) {
         const ext = imagePath.toLowerCase().split('.').pop();
@@ -141,4 +173,7 @@ Please ensure the JSON is valid and properly formatted.
     }
 }
 exports.GeminiService = GeminiService;
+GeminiService.lastRequestTime = 0;
+GeminiService.MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
+GeminiService.MAX_RETRIES = 3;
 //# sourceMappingURL=GeminiService.js.map

@@ -163,9 +163,10 @@ export class DatabaseService {
   static async findDuplicateImage(originalName: string, fileSize: number): Promise<ImageMetadata | null> {
     const get = promisify(this.db.get.bind(this.db)) as (sql: string, params: any[]) => Promise<any>;
 
+    // Exclude images with 'error' status from duplicate checking
     const row = await get(`
       SELECT * FROM images
-      WHERE original_name = ? AND file_size = ?
+      WHERE original_name = ? AND file_size = ? AND status != 'error'
       ORDER BY uploaded_at DESC
       LIMIT 1
     `, [originalName, fileSize]) as any;

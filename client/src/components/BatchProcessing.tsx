@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { imageApi, type BatchJob, type BatchProcessingResult, type BatchProcessingOptions } from '../services/api';
+import { imageApi, type BatchJob, type BatchProcessingOptions } from '../services/api';
 import './BatchProcessing.css';
 
 const BatchProcessing: React.FC = () => {
@@ -33,11 +33,33 @@ const BatchProcessing: React.FC = () => {
     }
   };
 
+  const validateFolderPath = (path: string): string | null => {
+    const trimmedPath = path.trim();
+
+    if (!trimmedPath) {
+      return 'Please enter a folder path';
+    }
+
+    // Basic path validation
+    if (trimmedPath.length < 2) {
+      return 'Path is too short';
+    }
+
+    // Check for invalid characters (basic validation)
+    const invalidChars = /[<>"|?*]/;
+    if (invalidChars.test(trimmedPath)) {
+      return 'Path contains invalid characters';
+    }
+
+    return null;
+  };
+
   const handleStartBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!folderPath.trim()) {
-      setError('Please enter a folder path');
+
+    const pathError = validateFolderPath(folderPath);
+    if (pathError) {
+      setError(pathError);
       return;
     }
 
@@ -46,8 +68,9 @@ const BatchProcessing: React.FC = () => {
     setSuccess(null);
 
     try {
+      console.log(`Starting batch processing for path: "${folderPath.trim()}"`);
       const response = await imageApi.startBatchProcessing(folderPath.trim(), options);
-      
+
       if (response.success) {
         setSuccess(`Batch processing started! Batch ID: ${response.batchId}`);
         setFolderPath('');
@@ -56,7 +79,9 @@ const BatchProcessing: React.FC = () => {
         setError(response.error || 'Failed to start batch processing');
       }
     } catch (error: any) {
-      setError(error.response?.data?.error || error.message || 'Failed to start batch processing');
+      console.error('Batch processing error:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to start batch processing';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -129,6 +154,14 @@ const BatchProcessing: React.FC = () => {
             />
             <small className="help-text">
               Enter the full path to the folder containing images. All subfolders will be processed recursively.
+              <br />
+              <strong>Note:</strong> Paths with spaces are supported (e.g., "/Users/john/My Photos/Vacation 2024").
+              <br />
+              <strong>Examples:</strong>
+              <br />
+              • macOS/Linux: <code>/Users/username/Pictures/My Photos</code>
+              <br />
+              • Windows: <code>C:\Users\username\Pictures\My Photos</code>
             </small>
           </div>
 

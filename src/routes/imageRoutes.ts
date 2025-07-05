@@ -191,18 +191,45 @@ router.post('/batch/process', async (req, res): Promise<void> => {
       return;
     }
 
-    // Check if folder exists
+    // Normalize and validate the folder path
+    let normalizedPath: string;
     try {
-      await fs.access(folderPath);
+      // Trim whitespace and normalize the path
+      normalizedPath = path.resolve(folderPath.trim());
+      console.log(`Batch processing request for path: "${folderPath}" -> normalized: "${normalizedPath}"`);
     } catch (error) {
+      console.error('Path normalization error:', error);
       res.status(400).json({
         success: false,
-        error: 'Folder path does not exist or is not accessible'
+        error: 'Invalid folder path format'
       });
       return;
     }
 
-    const batchId = await BatchProcessingService.startBatchProcessing(folderPath, options);
+    // Check if folder exists and is accessible
+    try {
+      const stats = await fs.stat(normalizedPath);
+      if (!stats.isDirectory()) {
+        res.status(400).json({
+          success: false,
+          error: 'Path exists but is not a directory'
+        });
+        return;
+      }
+
+      // Test read access
+      await fs.access(normalizedPath, fs.constants.R_OK);
+      console.log(`Directory access confirmed: "${normalizedPath}"`);
+    } catch (error) {
+      console.error(`Directory access error for "${normalizedPath}":`, error);
+      res.status(400).json({
+        success: false,
+        error: `Folder path does not exist or is not accessible: ${normalizedPath}`
+      });
+      return;
+    }
+
+    const batchId = await BatchProcessingService.startBatchProcessing(normalizedPath, options);
 
     res.json({
       success: true,
@@ -346,8 +373,9 @@ router.get('/:id/analysis', async (req, res): Promise<void> => {
 router.post('/:id/analyze', async (req, res): Promise<void> => {
   try {
     const imageId = parseInt(req.params.id);
+    const { useFallback } = req.body;
     const image = await DatabaseService.getImage(imageId);
-    
+
     if (!image) {
       res.status(404).json({
         success: false,
@@ -358,13 +386,13 @@ router.post('/:id/analyze', async (req, res): Promise<void> => {
 
     // Start analysis
     await DatabaseService.updateImageStatus(imageId, 'processing');
-    
-    // Process in background
-    processImageInBackground(imageId, image.filePath);
+
+    // Process in background with optional fallback
+    processImageInBackground(imageId, image.filePath, useFallback);
 
     res.json({
       success: true,
-      message: 'Analysis started'
+      message: useFallback ? 'Analysis started with fallback mode' : 'Analysis started'
     });
 
   } catch (error) {
@@ -415,16 +443,18 @@ router.get('/test/gemini', async (req, res): Promise<void> => {
 });
 
 // Background processing function
-async function processImageInBackground(imageId: number, imagePath: string): Promise<void> {
+async function processImageInBackground(imageId: number, imagePath: string, useFallback: boolean = false): Promise<void> {
   try {
     await DatabaseService.updateImageStatus(imageId, 'processing');
+
+    console.log(`Starting AI analysis for image ${imageId}${useFallback ? ' (fallback mode)' : ''}`);
 
     // Resize image for Gemini if needed
     const geminiImageSize = parseInt(process.env.GEMINI_IMAGE_SIZE || '1024');
     const resizedBuffer = await ImageProcessingService.resizeForGemini(imagePath, geminiImageSize);
 
     // Analyze with Gemini
-    const analysis = await GeminiService.analyzeImage(resizedBuffer, 'image/jpeg');
+    const analysis = await GeminiService.analyzeImage(resizedBuffer, 'image/jpeg', useFallback);
 
     // Save analysis to database
     const analysisData = {
@@ -434,17 +464,20 @@ async function processImageInBackground(imageId: number, imagePath: string): Pro
     };
 
     await DatabaseService.insertAnalysis(analysisData);
+
+    // Update status to completed
     await DatabaseService.updateImageStatus(imageId, 'completed');
 
-    console.log(`Image ${imageId} processed successfully`);
+    console.log(`AI analysis completed successfully for image ${imageId}${useFallback ? ' (using fallback)' : ''}`);
 
   } catch (error) {
-    console.error(`Failed to process image ${imageId}:`, error);
-    await DatabaseService.updateImageStatus(
-      imageId, 
-      'error', 
-      error instanceof Error ? error.message : 'Processing failed'
-    );
+    console.error(`AI analysis failed for image ${imageId}:`, error);
+
+    // Update status to error with detailed error message
+    const errorMessage = error instanceof Error ? error.message : 'Unknown AI analysis error';
+    await DatabaseService.updateImageStatus(imageId, 'error', `AI analysis failed: ${errorMessage}`);
+
+    console.log(`Image ${imageId} marked as failed due to AI analysis error`);
   }
 }
 
