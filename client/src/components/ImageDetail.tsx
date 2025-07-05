@@ -190,7 +190,7 @@ const ImageDetail: React.FC = () => {
         <div className="image-section">
           <div className="image-display">
             <img
-              src={imageApi.getImageUrl(image.filePath)}
+              src={imageApi.getDisplayUrl(image.id!)}
               alt={image.originalName}
             />
           </div>

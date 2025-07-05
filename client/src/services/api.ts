@@ -255,6 +255,11 @@ export const imageApi = {
   getImageUrl: (filePath: string): string => {
     return `${API_BASE_URL.replace('/api', '')}/uploads/${filePath.split('/').pop()}`;
   },
+
+  // Get display URL (original or thumbnail)
+  getDisplayUrl: (imageId: number): string => {
+    return `${API_BASE_URL}/images/${imageId}/display`;
+  },
 };
 
 export default api;
