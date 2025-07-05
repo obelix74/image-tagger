@@ -4,16 +4,42 @@ An intelligent image tagging application powered by Google's Gemini AI that auto
 
 ## Features
 
-- **Multi-format Support**: Handles JPG, TIFF, PNG, and RAW formats (CR2, NEF, ARW, DNG, RAF, ORF, RW2)
-- **RAW Processing**: Automatically extracts preview images from RAW files
-- **AI Analysis**: Uses Gemini AI to generate:
+### 🤖 AI-Powered Analysis
+- **Google Gemini Integration**: Advanced AI analysis generating:
   - Detailed image descriptions
-  - Social media-ready captions
-  - SEO-optimized keywords
-- **Image Processing**: Automatic resizing and thumbnail generation
-- **Modern UI**: Clean React interface with drag-and-drop upload
-- **Real-time Status**: Track processing progress and analysis status
-- **Database Storage**: SQLite database for metadata persistence
+  - SEO-optimized captions
+  - Relevant keywords for discoverability
+  - Confidence scores for analysis quality
+
+### 📁 Batch Processing
+- **Folder Processing**: Process entire folders recursively
+- **Duplicate Detection**: Automatically skip already processed images
+- **Real-time Progress**: Live status updates with detailed metrics
+- **Error Handling**: Comprehensive error reporting and recovery
+- **Background Processing**: Non-blocking batch operations
+
+### 🖼️ Format Support
+- **Standard Formats**: JPEG, PNG, TIFF
+- **RAW Formats**: CR2 (Canon), NEF (Nikon), ARW (Sony), DNG, RAF (Fujifilm), ORF (Olympus), RW2 (Panasonic)
+- **Large Files**: Support for files up to 50MB
+
+### 🔍 Search & Discovery
+- **Keyword Search**: Click any keyword to find related images
+- **Full-text Search**: Search across all metadata fields
+- **Pagination**: Efficient browsing of large image collections
+- **Real-time Filtering**: Instant search results
+
+### 🎨 Modern Interface
+- **Drag-and-drop Upload**: Intuitive file upload experience
+- **Responsive Design**: Works on desktop, tablet, and mobile
+- **Real-time Updates**: Live processing status and progress
+- **Gallery View**: Beautiful grid layout with metadata display
+
+### 💾 Data Management
+- **SQLite Database**: Efficient local storage
+- **Metadata Preservation**: Complete EXIF data retention
+- **Thumbnail Generation**: Automatic preview creation
+- **Status Tracking**: Processing state management
 
 ## Tech Stack
 
@@ -160,6 +186,130 @@ npm start
 
 For detailed script documentation, see [scripts/README.md](scripts/README.md).
 
+## 📁 Batch Processing
+
+Image Tagger includes powerful batch processing capabilities for handling large collections of images efficiently.
+
+### Features
+
+- **Recursive Folder Scanning**: Automatically discovers all images in folders and subfolders
+- **Duplicate Detection**: Skips files that have already been processed (configurable)
+- **Real-time Progress**: Live updates showing processing status and metrics
+- **Error Handling**: Comprehensive error reporting with detailed logs
+- **Background Processing**: Non-blocking operations that don't freeze the UI
+- **Configurable Options**: Customize thumbnail size, quality, and processing behavior
+
+### How to Use Batch Processing
+
+#### 1. Access Batch Processing
+- Navigate to the main gallery page
+- Click the **"Batch Processing"** button in the header
+- Or visit http://localhost:5173/batch directly
+
+#### 2. Configure Batch Job
+```
+Folder Path: /path/to/your/images/folder
+Thumbnail Size: 300px (default)
+AI Analysis Size: 1024px (default)
+JPEG Quality: 85% (default)
+Skip Duplicates: ✓ (recommended)
+```
+
+#### 3. Start Processing
+- Click **"Start Batch Processing"**
+- Monitor real-time progress with detailed metrics
+- View processing status: Total, Processed, Success, Duplicates, Errors
+
+#### 4. Review Results
+- **Successful Files**: Appear in the main gallery with AI analysis
+- **Duplicate Files**: Listed in the error report (if skip duplicates is enabled)
+- **Error Files**: Detailed error messages for troubleshooting
+
+### Supported Scenarios
+
+#### Large Photo Collections
+```bash
+# Example folder structure
+/Photos/
+├── 2023/
+│   ├── Vacation/
+│   │   ├── IMG_001.jpg
+│   │   ├── IMG_002.CR2
+│   │   └── ...
+│   └── Events/
+│       ├── Wedding/
+│       └── Birthday/
+└── 2024/
+    ├── Travel/
+    └── Family/
+```
+
+#### Mixed File Types
+- **JPEG/PNG**: Standard web formats
+- **TIFF**: High-quality images
+- **RAW Files**: CR2, NEF, ARW, DNG, RAF, ORF, RW2
+- **Large Files**: Up to 50MB per file
+
+#### Error Handling
+The system gracefully handles:
+- **Unsupported formats**: Skipped with clear error messages
+- **Corrupted files**: Logged and processing continues
+- **Permission issues**: Detailed error reporting
+- **Network interruptions**: Automatic retry mechanisms
+
+### Performance Considerations
+
+- **Processing Speed**: ~2-5 seconds per image (depending on size and AI analysis)
+- **Memory Usage**: Optimized for large batches with streaming processing
+- **Storage**: Thumbnails and processed images stored efficiently
+- **Concurrent Processing**: Background AI analysis doesn't block file processing
+
+### Monitoring and Logs
+
+#### Real-time Dashboard
+- **Progress Bar**: Visual progress indicator
+- **Live Metrics**: Updated every 2 seconds
+- **Status Indicators**: Processing, completed, error states
+- **Time Estimates**: Duration and remaining time
+
+#### Error Reporting
+- **Categorized Errors**: Duplicates, processing errors, unsupported files
+- **File-specific Details**: Exact error messages for each failed file
+- **Expandable Lists**: Click to view detailed error information
+
+### API Endpoints
+
+```bash
+# Start batch processing
+POST /api/images/batch/process
+{
+  "folderPath": "/path/to/images",
+  "options": {
+    "skipDuplicates": true,
+    "thumbnailSize": 300,
+    "geminiImageSize": 1024,
+    "quality": 85
+  }
+}
+
+# Get batch status
+GET /api/images/batch/:batchId
+
+# Get all batches
+GET /api/images/batch
+
+# Delete batch
+DELETE /api/images/batch/:batchId
+```
+
+### Best Practices
+
+1. **Organize Your Images**: Use clear folder structures for better organization
+2. **Check Disk Space**: Ensure sufficient space for thumbnails and processed images
+3. **Monitor Progress**: Keep the batch processing page open to monitor progress
+4. **Handle Errors**: Review error reports and fix issues before reprocessing
+5. **Backup Important Files**: Always backup original images before processing
+
 ## Project Structure
 
 ```
@@ -183,12 +333,25 @@ image-tagger/
 
 ## API Endpoints
 
+### Core Image Operations
 - `GET /api/health` - Health check
-- `GET /api/images` - Get all images
+- `GET /api/images` - Get all images (supports pagination: `?page=1&limit=12`)
 - `GET /api/images/:id` - Get specific image
 - `GET /api/images/:id/analysis` - Get image analysis
 - `POST /api/images/upload` - Upload new image
 - `POST /api/images/:id/analyze` - Trigger manual analysis
+
+### Search Operations
+- `GET /api/images/search?q=searchTerm` - Search across all metadata fields
+- `GET /api/images/search/keyword/:keyword` - Search by specific keyword
+
+### Batch Processing
+- `POST /api/images/batch/process` - Start batch processing
+- `GET /api/images/batch` - Get all batch jobs
+- `GET /api/images/batch/:batchId` - Get specific batch status
+- `DELETE /api/images/batch/:batchId` - Delete batch job
+
+### System
 - `GET /api/images/test/gemini` - Test Gemini API connection
 
 ## Configuration
@@ -240,20 +403,78 @@ GEMINI_IMAGE_SIZE=1024
    - Delete `database.sqlite` to reset the database
    - The database will be recreated automatically
 
-## Contributing
+## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+We welcome contributions from the community! Whether you're fixing bugs, adding features, improving documentation, or suggesting enhancements, your help is appreciated.
 
-## License
+### Quick Start for Contributors
 
-This project is licensed under the ISC License.
+1. **Fork the repository** on GitHub
+2. **Clone your fork** locally
+3. **Set up the development environment**:
+   ```bash
+   ./scripts/setup.sh
+   ```
+4. **Create a feature branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+5. **Make your changes** and test thoroughly
+6. **Submit a pull request** with a clear description
 
-## Acknowledgments
+### Areas We Need Help With
 
-- Google Gemini AI for image analysis capabilities
-- Sharp library for high-performance image processing
-- ExifR for RAW file support
+- **🧪 Testing**: Add unit and integration tests
+- **📚 Documentation**: Improve guides and API docs
+- **🐛 Bug Fixes**: Fix issues and improve stability
+- **✨ New Features**: Add new functionality
+- **🎨 UI/UX**: Enhance user interface and experience
+- **⚡ Performance**: Optimize code and improve speed
+
+### Before Contributing
+
+- Check existing [issues](https://github.com/obelix74/image-tagger/issues) and [pull requests](https://github.com/obelix74/image-tagger/pulls)
+- Read our [Contributing Guidelines](CONTRIBUTING.md)
+- Follow our coding standards and best practices
+- Test your changes thoroughly
+
+For detailed contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## 📄 License
+
+**Image Tagger** is licensed under a **Non-Commercial Use License**.
+
+### ✅ You can:
+- Use for personal, educational, and non-commercial purposes
+- Study, modify, and distribute the source code
+- Create derivative works for non-commercial use
+
+### ❌ You cannot:
+- Use for commercial purposes without permission
+- Sell, rent, or lease the software
+- Use in commercial products or services
+
+For commercial licensing, please contact: lists@anands.net
+
+See [LICENSE.md](LICENSE.md) for complete license terms.
+
+## 🙏 Acknowledgments
+
+- **Google Gemini AI** - Advanced image analysis capabilities
+- **Sharp** - High-performance image processing library
+- **ExifR** - Comprehensive RAW file format support
+- **React** - Modern frontend framework
+- **Express.js** - Fast, minimalist web framework
+- **SQLite** - Reliable embedded database
+- **TypeScript** - Type-safe JavaScript development
+
+## 📞 Support
+
+- **Documentation**: Check this README and [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Issues**: Report bugs and request features on [GitHub Issues](https://github.com/obelix74/image-tagger/issues)
+- **Discussions**: Join conversations on [GitHub Discussions](https://github.com/obelix74/image-tagger/discussions)
+- **Email**: Contact the maintainer at lists@anands.net
+
+---
+
+**Made with ❤️ by [Anand Kumar Sankaran](https://github.com/obelix74)**

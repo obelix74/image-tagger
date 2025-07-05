@@ -14,10 +14,29 @@
     "stop": "pkill -f \"ts-node src/index.ts\" && pkill -f \"vite\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "AI-powered image tagger using Gemini API",
+  "keywords": [
+    "image-analysis",
+    "ai",
+    "gemini",
+    "batch-processing",
+    "image-tagging",
+    "seo",
+    "metadata",
+    "typescript",
+    "react",
+    "express"
+  ],
+  "author": "Anand Kumar Sankaran <lists@anands.net>",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "description": "AI-powered image analysis and tagging application with batch processing capabilities",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/obelix74/image-tagger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/obelix74/image-tagger/issues"
+  },
+  "homepage": "https://github.com/obelix74/image-tagger#readme",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@types/uuid": "^10.0.0",

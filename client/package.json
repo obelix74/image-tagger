@@ -1,8 +1,11 @@
 {
-  "name": "client",
+  "name": "image-tagger-client",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Frontend client for Image Tagger - AI-powered image analysis application",
+  "author": "Anand Kumar Sankaran <lists@anands.net>",
+  "license": "SEE LICENSE IN ../LICENSE.md",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
