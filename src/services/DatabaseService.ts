@@ -126,7 +126,55 @@ export class DatabaseService {
       SELECT * FROM images
       ORDER BY uploaded_at DESC
     `) as any[];
-    
+
+    return rows.map(this.mapRowToImageMetadata);
+  }
+
+  static async findDuplicateImage(originalName: string, fileSize: number): Promise<ImageMetadata | null> {
+    const get = promisify(this.db.get.bind(this.db)) as (sql: string, params: any[]) => Promise<any>;
+
+    const row = await get(`
+      SELECT * FROM images
+      WHERE original_name = ? AND file_size = ?
+      ORDER BY uploaded_at DESC
+      LIMIT 1
+    `, [originalName, fileSize]) as any;
+
+    if (!row) return null;
+
+    return this.mapRowToImageMetadata(row);
+  }
+
+  static async searchImagesByKeyword(keyword: string): Promise<ImageMetadata[]> {
+    const all = promisify(this.db.all.bind(this.db)) as (sql: string, params: any[]) => Promise<any[]>;
+
+    const rows = await all(`
+      SELECT DISTINCT i.* FROM images i
+      INNER JOIN gemini_analysis ga ON i.id = ga.image_id
+      WHERE ga.keywords LIKE ?
+      ORDER BY i.uploaded_at DESC
+    `, [`%"${keyword}"%`]) as any[];
+
+    return rows.map(this.mapRowToImageMetadata);
+  }
+
+  static async searchImages(searchTerm: string): Promise<ImageMetadata[]> {
+    const all = promisify(this.db.all.bind(this.db)) as (sql: string, params: any[]) => Promise<any[]>;
+
+    const searchPattern = `%${searchTerm}%`;
+
+    const rows = await all(`
+      SELECT DISTINCT i.* FROM images i
+      LEFT JOIN gemini_analysis ga ON i.id = ga.image_id
+      WHERE
+        i.original_name LIKE ? OR
+        i.filename LIKE ? OR
+        ga.description LIKE ? OR
+        ga.caption LIKE ? OR
+        ga.keywords LIKE ?
+      ORDER BY i.uploaded_at DESC
+    `, [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern]) as any[];
+
     return rows.map(this.mapRowToImageMetadata);
   }
 
@@ -168,7 +216,7 @@ export class DatabaseService {
       description: row.description,
       caption: row.caption,
       keywords: JSON.parse(row.keywords),
-      confidence: row.confidence,
+      confidence: row.confidence ? parseFloat(row.confidence) : undefined,
       analysisDate: row.analysis_date
     };
   }

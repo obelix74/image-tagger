@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { imageApi, type ImageMetadata } from '../services/api';
+import SearchBox from './SearchBox';
 import './ImageGallery.css';
 
 const ImageGallery: React.FC = () => {
+  const navigate = useNavigate();
   const [images, setImages] = useState<ImageMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +18,7 @@ const ImageGallery: React.FC = () => {
     try {
       setLoading(true);
       const response = await imageApi.getAllImages();
-      
+
       if (response.success && response.images) {
         setImages(response.images);
       } else {
@@ -26,6 +28,12 @@ const ImageGallery: React.FC = () => {
       setError(error instanceof Error ? error.message : 'Failed to load images');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSearch = (searchTerm: string) => {
+    if (searchTerm.trim()) {
+      navigate(`/search/general/${encodeURIComponent(searchTerm)}`);
     }
   };
 
@@ -110,6 +118,14 @@ const ImageGallery: React.FC = () => {
         <Link to="/upload" className="upload-button">
           Upload New Image
         </Link>
+      </div>
+
+      <div className="search-section">
+        <SearchBox
+          onSearch={handleSearch}
+          placeholder="Search images by name, description, keywords..."
+          className="compact"
+        />
       </div>
 
       {images.length === 0 ? (

@@ -83,11 +83,25 @@ const ImageUpload: React.FC = () => {
         setTimeout(() => {
           navigate(`/image/${response.image!.id}`);
         }, 2000);
+      } else if (response.duplicate && response.existingImage) {
+        setError(`This file has already been uploaded. Click here to view the existing image.`);
+        setTimeout(() => {
+          navigate(`/image/${response.existingImage!.id}`);
+        }, 3000);
       } else {
         setError(response.error || 'Upload failed');
       }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Upload failed');
+    } catch (error: any) {
+      // Handle duplicate file error (409 status)
+      if (error.response?.status === 409 && error.response?.data?.duplicate) {
+        const responseData = error.response.data;
+        setError(`This file has already been uploaded. Redirecting to existing image...`);
+        setTimeout(() => {
+          navigate(`/image/${responseData.existingImage.id}`);
+        }, 3000);
+      } else {
+        setError(error instanceof Error ? error.message : 'Upload failed');
+      }
     } finally {
       setUploading(false);
       setTimeout(() => {

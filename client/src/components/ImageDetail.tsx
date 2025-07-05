@@ -1,26 +1,37 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { imageApi, type ImageMetadata, type GeminiAnalysis } from '../services/api';
 import './ImageDetail.css';
 
 const ImageDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [image, setImage] = useState<ImageMetadata | null>(null);
   const [analysis, setAnalysis] = useState<GeminiAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (id) {
       loadImageData(parseInt(id));
     }
+
+    // Cleanup polling on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
   }, [id]);
 
-  const loadImageData = async (imageId: number) => {
+  const loadImageData = async (imageId: number, isPolling = false) => {
     try {
-      setLoading(true);
-      setError(null);
+      if (!isPolling) {
+        setLoading(true);
+        setError(null);
+      }
 
       // Load image metadata
       const imageResponse = await imageApi.getImage(imageId);
@@ -37,6 +48,23 @@ const ImageDetail: React.FC = () => {
           } catch (analysisError) {
             console.warn('Analysis not available yet');
           }
+
+          // Stop polling when completed
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+        } else if (imageResponse.image.status === 'processing') {
+          // Start polling if not already polling
+          if (!pollingIntervalRef.current) {
+            startPolling(imageId);
+          }
+        } else if (imageResponse.image.status === 'error') {
+          // Stop polling on error
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
         }
       } else {
         setError(imageResponse.error || 'Image not found');
@@ -44,8 +72,17 @@ const ImageDetail: React.FC = () => {
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to load image');
     } finally {
-      setLoading(false);
+      if (!isPolling) {
+        setLoading(false);
+      }
     }
+  };
+
+  const startPolling = (imageId: number) => {
+    // Poll every 2 seconds to check for status updates
+    pollingIntervalRef.current = setInterval(() => {
+      loadImageData(imageId, true);
+    }, 2000);
   };
 
   const handleAnalyze = async () => {
@@ -54,9 +91,9 @@ const ImageDetail: React.FC = () => {
     try {
       setAnalysisLoading(true);
       const response = await imageApi.analyzeImage(image.id!);
-      
+
       if (response.success) {
-        // Reload image data to get updated status
+        // Reload image data to get updated status and start polling
         await loadImageData(image.id!);
       } else {
         setError(response.error || 'Failed to start analysis');
@@ -70,6 +107,10 @@ const ImageDetail: React.FC = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
+  };
+
+  const handleKeywordClick = (keyword: string) => {
+    navigate(`/search/${encodeURIComponent(keyword)}`);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -259,18 +300,28 @@ const ImageDetail: React.FC = () => {
                 </div>
                 <div className="keywords">
                   {analysis.keywords.map((keyword, index) => (
-                    <span key={index} className="keyword-tag">
+                    <button
+                      key={index}
+                      className="keyword-tag clickable"
+                      onClick={() => handleKeywordClick(keyword)}
+                      title={`Search for images with "${keyword}"`}
+                    >
                       {keyword}
-                    </span>
+                    </button>
                   ))}
+                </div>
+                <div className="keywords-text">
+                  <p className="comma-separated">
+                    <strong>Comma-separated:</strong> {analysis.keywords.join(', ')}
+                  </p>
                 </div>
               </div>
 
-              {analysis.confidence && (
+              {analysis.confidence !== undefined && analysis.confidence !== null && (
                 <div className="confidence-indicator">
                   <label>AI Confidence:</label>
                   <div className="confidence-bar">
-                    <div 
+                    <div
                       className="confidence-fill"
                       style={{ width: `${analysis.confidence * 100}%` }}
                     ></div>

@@ -4,6 +4,8 @@ import Header from './components/Header';
 import ImageUpload from './components/ImageUpload';
 import ImageGallery from './components/ImageGallery';
 import ImageDetail from './components/ImageDetail';
+import SearchResults from './components/SearchResults';
+import GeneralSearchResults from './components/GeneralSearchResults';
 import './App.css';
 
 function App() {
@@ -16,6 +18,8 @@ function App() {
             <Route path="/" element={<ImageGallery />} />
             <Route path="/upload" element={<ImageUpload />} />
             <Route path="/image/:id" element={<ImageDetail />} />
+            <Route path="/search/:keyword" element={<SearchResults />} />
+            <Route path="/search/general/:searchTerm" element={<GeneralSearchResults />} />
           </Routes>
         </main>
       </div>

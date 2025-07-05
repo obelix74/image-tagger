@@ -45,6 +45,14 @@
   font-size: 1.1rem;
 }
 
+.search-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 .loading, .error {
   display: flex;
   flex-direction: column;

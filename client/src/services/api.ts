@@ -37,6 +37,8 @@ export interface UploadResponse {
   success: boolean;
   image?: ImageMetadata;
   error?: string;
+  duplicate?: boolean;
+  existingImage?: ImageMetadata;
 }
 
 export interface ImagesResponse {
@@ -48,6 +50,22 @@ export interface ImagesResponse {
 export interface AnalysisResponse {
   success: boolean;
   analysis?: GeminiAnalysis;
+  error?: string;
+}
+
+export interface KeywordSearchResponse {
+  success: boolean;
+  images?: ImageMetadata[];
+  keyword?: string;
+  count?: number;
+  error?: string;
+}
+
+export interface GeneralSearchResponse {
+  success: boolean;
+  images?: ImageMetadata[];
+  searchTerm?: string;
+  count?: number;
   error?: string;
 }
 
@@ -87,6 +105,18 @@ export const imageApi = {
   // Trigger manual analysis
   analyzeImage: async (id: number): Promise<{ success: boolean; message?: string; error?: string }> => {
     const response = await api.post(`/images/${id}/analyze`);
+    return response.data;
+  },
+
+  // Search images by keyword
+  searchByKeyword: async (keyword: string): Promise<KeywordSearchResponse> => {
+    const response = await api.get(`/images/search/keyword/${encodeURIComponent(keyword)}`);
+    return response.data;
+  },
+
+  // General search across all metadata
+  searchImages: async (searchTerm: string): Promise<GeneralSearchResponse> => {
+    const response = await api.get(`/images/search?q=${encodeURIComponent(searchTerm)}`);
     return response.data;
   },
 

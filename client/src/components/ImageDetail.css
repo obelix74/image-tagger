@@ -99,6 +99,8 @@
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   height: fit-content;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .analysis-header {
@@ -195,7 +197,7 @@
 .analysis-results {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1.5rem;
 }
 
 .analysis-item {
@@ -254,6 +256,41 @@
   border-radius: 20px;
   font-size: 0.9rem;
   font-weight: 500;
+  border: none;
+  cursor: default;
+}
+
+.keyword-tag.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.keyword-tag.clickable:hover {
+  background: #667eea;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.keyword-tag.clickable:active {
+  transform: translateY(0);
+}
+
+.keywords-text {
+  margin-top: 0.75rem;
+}
+
+.comma-separated {
+  background: #f8f9fa;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.85rem;
+  color: #495057;
+  margin: 0;
+  word-break: break-word;
+  border: 1px solid #e9ecef;
 }
 
 .confidence-indicator {
@@ -262,13 +299,22 @@
   gap: 1rem;
   align-items: center;
   margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
+  padding: 1rem;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  background: #f8f9fa;
 }
 
 .confidence-indicator label {
   font-weight: 600;
-  color: #555;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.confidence-indicator span {
+  font-weight: 600;
+  color: #28a745;
+  font-size: 0.95rem;
 }
 
 .confidence-bar {

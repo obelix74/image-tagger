@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import { promises as fs } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { DatabaseService } from '../services/DatabaseService';
 import { ImageProcessingService } from '../services/ImageProcessingService';
@@ -39,6 +40,29 @@ router.post('/upload', upload.single('image'), async (req, res): Promise<void> =
   try {
     if (!req.file) {
       res.status(400).json({ success: false, error: 'No file uploaded' });
+      return;
+    }
+
+    // Check for duplicate files
+    const existingImage = await DatabaseService.findDuplicateImage(
+      req.file.originalname,
+      req.file.size
+    );
+
+    if (existingImage) {
+      // Delete the uploaded file since it's a duplicate
+      try {
+        await fs.unlink(req.file.path);
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup duplicate file:', cleanupError);
+      }
+
+      res.status(409).json({
+        success: false,
+        error: 'This file has already been uploaded',
+        duplicate: true,
+        existingImage: existingImage
+      });
       return;
     }
 
@@ -97,6 +121,36 @@ router.post('/upload', upload.single('image'), async (req, res): Promise<void> =
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Upload failed'
+    });
+  }
+});
+
+// General search across all metadata (must come before /:id route)
+router.get('/search', async (req, res): Promise<void> => {
+  try {
+    const searchTerm = req.query.q as string;
+
+    if (!searchTerm || searchTerm.trim().length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Search term is required'
+      });
+      return;
+    }
+
+    const images = await DatabaseService.searchImages(searchTerm.trim());
+
+    res.json({
+      success: true,
+      images,
+      searchTerm,
+      count: images.length
+    });
+  } catch (error) {
+    console.error('General search error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search images'
     });
   }
 });
@@ -198,6 +252,27 @@ router.post('/:id/analyze', async (req, res): Promise<void> => {
     res.status(500).json({
       success: false,
       error: 'Failed to start analysis'
+    });
+  }
+});
+
+// Search images by keyword
+router.get('/search/keyword/:keyword', async (req, res): Promise<void> => {
+  try {
+    const keyword = decodeURIComponent(req.params.keyword);
+    const images = await DatabaseService.searchImagesByKeyword(keyword);
+
+    res.json({
+      success: true,
+      images,
+      keyword,
+      count: images.length
+    });
+  } catch (error) {
+    console.error('Keyword search error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search images by keyword'
     });
   }
 });
