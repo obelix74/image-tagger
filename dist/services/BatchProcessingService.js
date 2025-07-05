@@ -257,6 +257,13 @@ class BatchProcessingService {
                 if (batchJob.options.parallelConnections === 1) {
                     this.cleanupUploadedFile(destinationPath);
                 }
+                // Force garbage collection every 10 images to prevent memory buildup
+                if (batchJob.result.processedFiles % 10 === 0) {
+                    if (global.gc) {
+                        global.gc();
+                        console.log(`🗑️ Forced garbage collection after ${batchJob.result.processedFiles} images`);
+                    }
+                }
             }
         }
         catch (error) {
@@ -293,9 +300,11 @@ class BatchProcessingService {
                     });
                 }
                 batchJob.result.processedFiles++;
-                // Log progress
+                // Log progress with memory usage
                 const progress = Math.round((batchJob.result.processedFiles / batchJob.result.totalFiles) * 100);
-                console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%)`);
+                const memUsage = process.memoryUsage();
+                const memUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+                console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%) | Memory: ${memUsedMB}MB`);
             }
         };
         // Start parallel workers

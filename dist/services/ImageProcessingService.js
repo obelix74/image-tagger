@@ -158,15 +158,22 @@ class ImageProcessingService {
     }
     static async extractComprehensiveMetadata(imageBuffer) {
         try {
-            // Extract all available EXIF, IPTC, and XMP data
+            // Limit buffer size to prevent memory issues
+            const maxBufferSize = 50 * 1024 * 1024; // 50MB limit
+            if (imageBuffer.length > maxBufferSize) {
+                console.warn(`Image buffer too large (${imageBuffer.length} bytes), skipping EXIF extraction`);
+                return null;
+            }
+            // Extract essential EXIF, IPTC, and XMP data with memory-conscious options
             const exifData = await exifr_1.default.parse(imageBuffer, {
                 exif: true,
                 iptc: true,
                 xmp: true,
-                icc: true,
+                icc: false, // Skip ICC profiles to save memory
                 gps: true,
-                interop: true,
-                makerNote: false // Skip maker notes to avoid large data
+                interop: false, // Skip interop to save memory
+                makerNote: false, // Skip maker notes to avoid large data
+                multiSegment: false // Disable multi-segment parsing to save memory
             });
             if (!exifData) {
                 return null;
@@ -230,8 +237,8 @@ class ImageProcessingService {
                 xResolution: exifData.XResolution,
                 yResolution: exifData.YResolution,
                 resolutionUnit: exifData.ResolutionUnit?.toString(),
-                // Raw EXIF JSON for advanced users
-                rawExif: JSON.stringify(exifData)
+                // Raw EXIF JSON for advanced users (limited to prevent memory issues)
+                rawExif: this.sanitizeExifData(exifData)
             };
         }
         catch (error) {
@@ -248,6 +255,41 @@ class ImageProcessingService {
             return ref === 'S' || ref === 'W' ? -decimal : decimal;
         }
         return undefined;
+    }
+    static sanitizeExifData(exifData) {
+        try {
+            // Create a sanitized version of EXIF data to prevent memory issues
+            const sanitized = {};
+            // Include only essential fields to limit size
+            const allowedFields = [
+                'Make', 'Model', 'Software', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized',
+                'ISO', 'FNumber', 'ExposureTime', 'FocalLength', 'Flash', 'WhiteBalance',
+                'ColorSpace', 'Orientation', 'XResolution', 'YResolution', 'ResolutionUnit',
+                'GPSLatitude', 'GPSLongitude', 'GPSAltitude', 'GPSLatitudeRef', 'GPSLongitudeRef',
+                'ImageWidth', 'ImageHeight', 'BitsPerSample', 'Compression'
+            ];
+            for (const field of allowedFields) {
+                if (exifData[field] !== undefined) {
+                    // Limit string fields to reasonable lengths
+                    if (typeof exifData[field] === 'string' && exifData[field].length > 500) {
+                        sanitized[field] = exifData[field].substring(0, 500) + '...';
+                    }
+                    else {
+                        sanitized[field] = exifData[field];
+                    }
+                }
+            }
+            const jsonString = JSON.stringify(sanitized);
+            // Limit total JSON size to 10KB
+            if (jsonString.length > 10240) {
+                return JSON.stringify({ error: 'EXIF data too large, truncated for memory safety' });
+            }
+            return jsonString;
+        }
+        catch (error) {
+            console.warn('Failed to sanitize EXIF data:', error);
+            return JSON.stringify({ error: 'Failed to process EXIF data' });
+        }
     }
 }
 exports.ImageProcessingService = ImageProcessingService;

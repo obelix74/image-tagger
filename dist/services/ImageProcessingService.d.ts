@@ -21,5 +21,6 @@ export declare class ImageProcessingService {
     static getFileSize(filePath: string): Promise<number>;
     private static extractComprehensiveMetadata;
     private static convertGPSCoordinate;
+    private static sanitizeExifData;
 }
 //# sourceMappingURL=ImageProcessingService.d.ts.map

@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs/promises';
+import sharp from 'sharp';
 import { GeminiAnalysis } from '../types';
 
 export class GeminiService {
@@ -62,6 +63,9 @@ Requirements:
 Please ensure the JSON is valid and properly formatted.
     `;
 
+    // Prepare image for Gemini API with size limits
+    const processedImageBuffer = await this.prepareImageForGemini(imageBuffer);
+
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
@@ -73,7 +77,7 @@ Please ensure the JSON is valid and properly formatted.
 
         const imagePart = {
           inlineData: {
-            data: imageBuffer.toString('base64'),
+            data: processedImageBuffer.toString('base64'),
             mimeType: mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
           }
         };
@@ -199,6 +203,85 @@ Please ensure the JSON is valid and properly formatted.
     } catch (error) {
       console.error('Gemini connection test failed:', error);
       return false;
+    }
+  }
+
+  private static async prepareImageForGemini(imageBuffer: Buffer): Promise<Buffer> {
+    try {
+      // Check buffer size - if it's too large, it will cause string conversion issues
+      const maxBufferSize = 20 * 1024 * 1024; // 20MB limit for base64 conversion
+
+      if (imageBuffer.length > maxBufferSize) {
+        console.log(`Image buffer too large (${Math.round(imageBuffer.length / 1024 / 1024)}MB), resizing for Gemini API`);
+
+        // Resize image to reduce buffer size
+        const resizedBuffer = await sharp(imageBuffer)
+          .resize(1024, 1024, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .jpeg({
+            quality: 80,
+            progressive: true
+          })
+          .toBuffer();
+
+        console.log(`Resized image from ${Math.round(imageBuffer.length / 1024 / 1024)}MB to ${Math.round(resizedBuffer.length / 1024 / 1024)}MB`);
+        return resizedBuffer;
+      }
+
+      // Check if we can safely convert to base64 string
+      // JavaScript max string length is about 1GB, but base64 increases size by ~33%
+      const estimatedBase64Size = imageBuffer.length * 1.33;
+      const maxSafeStringSize = 500 * 1024 * 1024; // 500MB safety limit
+
+      if (estimatedBase64Size > maxSafeStringSize) {
+        console.log(`Estimated base64 size too large (${Math.round(estimatedBase64Size / 1024 / 1024)}MB), resizing for safety`);
+
+        // Calculate target size to stay under limit
+        const targetBufferSize = Math.floor(maxSafeStringSize / 1.33);
+        const scaleFactor = Math.sqrt(targetBufferSize / imageBuffer.length);
+        const targetWidth = Math.floor(1024 * scaleFactor);
+
+        const resizedBuffer = await sharp(imageBuffer)
+          .resize(targetWidth, targetWidth, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .jpeg({
+            quality: 75,
+            progressive: true
+          })
+          .toBuffer();
+
+        console.log(`Resized image for base64 safety from ${Math.round(imageBuffer.length / 1024 / 1024)}MB to ${Math.round(resizedBuffer.length / 1024 / 1024)}MB`);
+        return resizedBuffer;
+      }
+
+      // Image is already a safe size
+      return imageBuffer;
+
+    } catch (error) {
+      console.error('Error preparing image for Gemini:', error);
+
+      // Fallback: create a very small version
+      try {
+        const fallbackBuffer = await sharp(imageBuffer)
+          .resize(512, 512, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .jpeg({
+            quality: 60
+          })
+          .toBuffer();
+
+        console.log('Created fallback resized image for Gemini API');
+        return fallbackBuffer;
+      } catch (fallbackError) {
+        console.error('Failed to create fallback image:', fallbackError);
+        throw new Error('Unable to prepare image for Gemini API');
+      }
     }
   }
 }

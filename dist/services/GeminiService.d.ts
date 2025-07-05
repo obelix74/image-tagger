@@ -12,5 +12,6 @@ export declare class GeminiService {
     private static getMimeTypeFromPath;
     private static getFallbackAnalysis;
     static testConnection(): Promise<boolean>;
+    private static prepareImageForGemini;
 }
 //# sourceMappingURL=GeminiService.d.ts.map
