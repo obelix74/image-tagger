@@ -43,3 +43,5 @@ I then asked the VS Code Augment plugin to write the same. It wrote both the ser
 I am pretty happy with the result. Attached screenshots of the application in action.  My next stage would be to automate this for my entire image catalog and implement a search engine around this, once I figure out the cost of using Gemini AI API for 1000s of images.
 
 Given my experiences so far, I think I am going to settle down on Augment Code even for personal projects. Augment continues to stun me with its capabilities.
+
+The code for this project is available at https://github.com/obelix74/image-tagger
