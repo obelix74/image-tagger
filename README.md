@@ -41,32 +41,44 @@ An intelligent image tagging application powered by Google's Gemini AI that auto
 
 ## Installation
 
+### Quick Setup (Recommended)
+```bash
+# Clone the repository
+git clone <repository-url>
+cd image-tagger
+
+# Run the setup script (Unix/Linux/Mac)
+./scripts/setup.sh
+
+# Or for Windows
+scripts\setup.bat
+```
+
+### Manual Setup
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
    cd image-tagger
    ```
 
-2. **Install backend dependencies**
+2. **Install all dependencies**
    ```bash
-   npm install
+   npm run install:all
    ```
 
-3. **Install frontend dependencies**
-   ```bash
-   cd client
-   npm install
-   cd ..
-   ```
-
-4. **Set up environment variables**
+3. **Set up environment variables**
    ```bash
    cp .env.example .env
    ```
-   
+
    Edit `.env` and add your Gemini API key:
    ```
    GEMINI_API_KEY=your_actual_api_key_here
+   ```
+
+4. **Build the project**
+   ```bash
+   npm run build:all
    ```
 
 ## Getting Your Gemini API Key
@@ -78,18 +90,38 @@ An intelligent image tagging application powered by Google's Gemini AI that auto
 
 ## Usage
 
+### Quick Start (Recommended)
+```bash
+# Start both server and client (Unix/Linux/Mac)
+./scripts/start.sh
+
+# Or for Windows
+scripts\start.bat
+
+# Stop both server and client (Unix/Linux/Mac)
+./scripts/stop.sh
+
+# Or for Windows
+scripts\stop.bat
+```
+
 ### Development Mode
 
+#### Start Both Services
+```bash
+npm run dev:both
+```
+
+#### Start Services Individually
 1. **Start the backend server**
    ```bash
-   npm run dev
+   npm run dev:server
    ```
    Server will run on http://localhost:3001
 
 2. **Start the frontend development server**
    ```bash
-   cd client
-   npm run dev
+   npm run dev:client
    ```
    Frontend will run on http://localhost:5173
 
@@ -97,21 +129,36 @@ An intelligent image tagging application powered by Google's Gemini AI that auto
 
 ### Production Build
 
-1. **Build the backend**
-   ```bash
-   npm run build
-   ```
+```bash
+# Build both server and client
+npm run build:all
 
-2. **Build the frontend**
-   ```bash
-   cd client
-   npm run build
-   ```
+# Start the production server
+npm start
+```
 
-3. **Start the production server**
-   ```bash
-   npm start
-   ```
+## Available Scripts
+
+### Development Scripts
+- `./scripts/setup.sh` - Initial project setup (Unix/Linux/Mac)
+- `./scripts/start.sh` - Start both server and client (Unix/Linux/Mac)
+- `./scripts/stop.sh` - Stop all processes (Unix/Linux/Mac)
+- `scripts\setup.bat` - Initial project setup (Windows)
+- `scripts\start.bat` - Start both server and client (Windows)
+- `scripts\stop.bat` - Stop all processes (Windows)
+
+### NPM Scripts
+- `npm run dev` - Start server only
+- `npm run dev:server` - Start server only
+- `npm run dev:client` - Start client only
+- `npm run dev:both` - Start both server and client concurrently
+- `npm run build` - Build server only
+- `npm run build:all` - Build both server and client
+- `npm run install:all` - Install dependencies for both server and client
+- `npm run stop` - Stop all processes (Unix/Linux/Mac only)
+- `npm start` - Start production server
+
+For detailed script documentation, see [scripts/README.md](scripts/README.md).
 
 ## Project Structure
 
