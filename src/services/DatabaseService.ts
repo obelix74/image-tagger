@@ -119,15 +119,45 @@ export class DatabaseService {
     return this.mapRowToImageMetadata(row);
   }
 
-  static async getAllImages(): Promise<ImageMetadata[]> {
-    const all = promisify(this.db.all.bind(this.db)) as (sql: string) => Promise<any[]>;
+  static async getAllImages(page?: number, limit?: number): Promise<{ images: ImageMetadata[], total: number, page: number, totalPages: number }> {
+    const all = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
+    const get = promisify(this.db.get.bind(this.db)) as (sql: string) => Promise<any>;
 
-    const rows = await all(`
-      SELECT * FROM images
-      ORDER BY uploaded_at DESC
-    `) as any[];
+    // Get total count
+    const countResult = await get(`SELECT COUNT(*) as total FROM images`) as { total: number };
+    const total = countResult.total;
 
-    return rows.map(this.mapRowToImageMetadata);
+    if (page !== undefined && limit !== undefined) {
+      // Paginated query
+      const offset = (page - 1) * limit;
+      const rows = await all(`
+        SELECT * FROM images
+        ORDER BY uploaded_at DESC
+        LIMIT ? OFFSET ?
+      `, [limit, offset]) as any[];
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        images: rows.map(this.mapRowToImageMetadata),
+        total,
+        page,
+        totalPages
+      };
+    } else {
+      // Non-paginated query (backward compatibility)
+      const rows = await all(`
+        SELECT * FROM images
+        ORDER BY uploaded_at DESC
+      `) as any[];
+
+      return {
+        images: rows.map(this.mapRowToImageMetadata),
+        total,
+        page: 1,
+        totalPages: 1
+      };
+    }
   }
 
   static async findDuplicateImage(originalName: string, fileSize: number): Promise<ImageMetadata | null> {

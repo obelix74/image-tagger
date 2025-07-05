@@ -44,6 +44,9 @@ export interface UploadResponse {
 export interface ImagesResponse {
   success: boolean;
   images?: ImageMetadata[];
+  total?: number;
+  page?: number;
+  totalPages?: number;
   error?: string;
 }
 
@@ -69,6 +72,48 @@ export interface GeneralSearchResponse {
   error?: string;
 }
 
+export interface BatchProcessingOptions {
+  thumbnailSize?: number;
+  geminiImageSize?: number;
+  quality?: number;
+  skipDuplicates?: boolean;
+}
+
+export interface BatchProcessingResult {
+  batchId: string;
+  totalFiles: number;
+  processedFiles: number;
+  successfulFiles: number;
+  duplicateFiles: number;
+  errorFiles: number;
+  errors: Array<{
+    file: string;
+    error: string;
+    type: 'duplicate' | 'processing' | 'unsupported';
+  }>;
+  processedImages: ImageMetadata[];
+  status: 'processing' | 'completed' | 'error';
+  startTime: string;
+  endTime?: string;
+}
+
+export interface BatchJob {
+  id: string;
+  folderPath: string;
+  options: BatchProcessingOptions;
+  result: BatchProcessingResult;
+  createdAt: string;
+}
+
+export interface BatchResponse {
+  success: boolean;
+  batchId?: string;
+  result?: BatchProcessingResult;
+  batches?: BatchJob[];
+  message?: string;
+  error?: string;
+}
+
 export const imageApi = {
   // Upload an image
   uploadImage: async (file: File): Promise<UploadResponse> => {
@@ -84,9 +129,14 @@ export const imageApi = {
     return response.data;
   },
 
-  // Get all images
-  getAllImages: async (): Promise<ImagesResponse> => {
-    const response = await api.get('/images');
+  // Get all images with pagination
+  getAllImages: async (page?: number, limit?: number): Promise<ImagesResponse> => {
+    const params = new URLSearchParams();
+    if (page !== undefined) params.append('page', page.toString());
+    if (limit !== undefined) params.append('limit', limit.toString());
+
+    const url = params.toString() ? `/images?${params.toString()}` : '/images';
+    const response = await api.get(url);
     return response.data;
   },
 
@@ -117,6 +167,27 @@ export const imageApi = {
   // General search across all metadata
   searchImages: async (searchTerm: string): Promise<GeneralSearchResponse> => {
     const response = await api.get(`/images/search?q=${encodeURIComponent(searchTerm)}`);
+    return response.data;
+  },
+
+  // Batch processing
+  startBatchProcessing: async (folderPath: string, options?: BatchProcessingOptions): Promise<BatchResponse> => {
+    const response = await api.post('/images/batch/process', { folderPath, options });
+    return response.data;
+  },
+
+  getBatchStatus: async (batchId: string): Promise<BatchResponse> => {
+    const response = await api.get(`/images/batch/${batchId}`);
+    return response.data;
+  },
+
+  getAllBatches: async (): Promise<BatchResponse> => {
+    const response = await api.get('/images/batch');
+    return response.data;
+  },
+
+  deleteBatch: async (batchId: string): Promise<BatchResponse> => {
+    const response = await api.delete(`/images/batch/${batchId}`);
     return response.data;
   },
 

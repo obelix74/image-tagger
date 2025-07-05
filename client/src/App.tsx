@@ -6,6 +6,7 @@ import ImageGallery from './components/ImageGallery';
 import ImageDetail from './components/ImageDetail';
 import SearchResults from './components/SearchResults';
 import GeneralSearchResults from './components/GeneralSearchResults';
+import BatchProcessing from './components/BatchProcessing';
 import './App.css';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
           <Routes>
             <Route path="/" element={<ImageGallery />} />
             <Route path="/upload" element={<ImageUpload />} />
+            <Route path="/batch" element={<BatchProcessing />} />
             <Route path="/image/:id" element={<ImageDetail />} />
             <Route path="/search/:keyword" element={<SearchResults />} />
             <Route path="/search/general/:searchTerm" element={<GeneralSearchResults />} />

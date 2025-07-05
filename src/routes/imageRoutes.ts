@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { DatabaseService } from '../services/DatabaseService';
 import { ImageProcessingService } from '../services/ImageProcessingService';
 import { GeminiService } from '../services/GeminiService';
+import { BatchProcessingService } from '../services/BatchProcessingService';
 import { ImageMetadata, UploadResponse, AnalysisResponse } from '../types';
 
 const router = express.Router();
@@ -155,16 +156,135 @@ router.get('/search', async (req, res): Promise<void> => {
   }
 });
 
-// Get all images
+// Get all images with pagination
 router.get('/', async (req, res): Promise<void> => {
   try {
-    const images = await DatabaseService.getAllImages();
-    res.json({ success: true, images });
+    const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+
+    const result = await DatabaseService.getAllImages(page, limit);
+    res.json({
+      success: true,
+      ...result
+    });
   } catch (error) {
     console.error('Get images error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve images'
+    });
+  }
+});
+
+// Batch processing routes
+
+// Start batch processing
+router.post('/batch/process', async (req, res): Promise<void> => {
+  try {
+    const { folderPath, options } = req.body;
+
+    if (!folderPath) {
+      res.status(400).json({
+        success: false,
+        error: 'Folder path is required'
+      });
+      return;
+    }
+
+    // Check if folder exists
+    try {
+      await fs.access(folderPath);
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: 'Folder path does not exist or is not accessible'
+      });
+      return;
+    }
+
+    const batchId = await BatchProcessingService.startBatchProcessing(folderPath, options);
+
+    res.json({
+      success: true,
+      batchId,
+      message: 'Batch processing started'
+    });
+  } catch (error) {
+    console.error('Batch processing start error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start batch processing'
+    });
+  }
+});
+
+// Get batch status
+router.get('/batch/:batchId', async (req, res): Promise<void> => {
+  try {
+    const { batchId } = req.params;
+    const result = await BatchProcessingService.getBatchStatus(batchId);
+
+    if (!result) {
+      res.status(404).json({
+        success: false,
+        error: 'Batch not found'
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      result
+    });
+  } catch (error) {
+    console.error('Get batch status error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get batch status'
+    });
+  }
+});
+
+// Get all batches
+router.get('/batch', async (req, res): Promise<void> => {
+  try {
+    const batches = await BatchProcessingService.getAllBatches();
+    res.json({
+      success: true,
+      batches
+    });
+  } catch (error) {
+    console.error('Get all batches error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get batches'
+    });
+  }
+});
+
+// Delete batch
+router.delete('/batch/:batchId', async (req, res): Promise<void> => {
+  try {
+    const { batchId } = req.params;
+    const deleted = await BatchProcessingService.deleteBatch(batchId);
+
+    if (!deleted) {
+      res.status(404).json({
+        success: false,
+        error: 'Batch not found'
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Batch deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete batch error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete batch'
     });
   }
 });

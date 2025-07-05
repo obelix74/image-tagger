@@ -9,18 +9,24 @@ const ImageGallery: React.FC = () => {
   const [images, setImages] = useState<ImageMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const itemsPerPage = 12;
 
   useEffect(() => {
     loadImages();
-  }, []);
+  }, [currentPage]);
 
   const loadImages = async () => {
     try {
       setLoading(true);
-      const response = await imageApi.getAllImages();
+      const response = await imageApi.getAllImages(currentPage, itemsPerPage);
 
       if (response.success && response.images) {
         setImages(response.images);
+        setTotal(response.total || 0);
+        setTotalPages(response.totalPages || 1);
       } else {
         setError(response.error || 'Failed to load images');
       }
@@ -114,10 +120,15 @@ const ImageGallery: React.FC = () => {
     <div className="gallery-container">
       <div className="gallery-header">
         <h2>Image Gallery</h2>
-        <p>{images.length} image{images.length !== 1 ? 's' : ''} uploaded</p>
-        <Link to="/upload" className="upload-button">
-          Upload New Image
-        </Link>
+        <p>{total} image{total !== 1 ? 's' : ''} total • Page {currentPage} of {totalPages}</p>
+        <div className="header-actions">
+          <Link to="/upload" className="upload-button">
+            Upload New Image
+          </Link>
+          <Link to="/batch" className="batch-button">
+            Batch Processing
+          </Link>
+        </div>
       </div>
 
       <div className="search-section">
@@ -171,6 +182,30 @@ const ImageGallery: React.FC = () => {
               </div>
             </Link>
           ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="pagination">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="pagination-button"
+          >
+            ← Previous
+          </button>
+
+          <div className="pagination-info">
+            <span>Page {currentPage} of {totalPages}</span>
+          </div>
+
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="pagination-button"
+          >
+            Next →
+          </button>
         </div>
       )}
     </div>
