@@ -203,6 +203,7 @@ class BatchProcessingService {
                 filename: uniqueFilename,
                 originalName: fileName,
                 filePath: destinationPath,
+                originalPath: filePath, // Store the original file path
                 thumbnailPath: processedResult.thumbnailPath,
                 fileSize: stats.size,
                 mimeType: ImageProcessingService_1.ImageProcessingService.getMimeType(fileName),
@@ -242,9 +243,19 @@ class BatchProcessingService {
                     // Parallel: start AI analysis in background without waiting
                     console.log(`Starting parallel AI analysis for image ${imageId}`);
                     this.processImageAnalysisInBackground(imageId, processedResult.processedPath)
+                        .then(() => {
+                        // Clean up uploaded file after AI analysis is complete
+                        this.cleanupUploadedFile(destinationPath);
+                    })
                         .catch(error => {
                         console.error(`AI analysis failed for image ${imageId}:`, error);
+                        // Still clean up the uploaded file even if analysis failed
+                        this.cleanupUploadedFile(destinationPath);
                     });
+                }
+                // For sequential processing, clean up after AI analysis
+                if (batchJob.options.parallelConnections === 1) {
+                    this.cleanupUploadedFile(destinationPath);
                 }
             }
         }
@@ -315,6 +326,15 @@ class BatchProcessingService {
             safeName = 'image';
         }
         return `${uuid}_${safeName}${ext}`;
+    }
+    static async cleanupUploadedFile(filePath) {
+        try {
+            await fs_1.promises.unlink(filePath);
+            console.log(`🗑️ Cleaned up uploaded file: ${path_1.default.basename(filePath)}`);
+        }
+        catch (error) {
+            console.warn(`Failed to cleanup uploaded file ${filePath}:`, error);
+        }
     }
     static async processImageAnalysisInBackground(imageId, imagePath) {
         try {

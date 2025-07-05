@@ -278,6 +278,7 @@ export class BatchProcessingService {
         filename: uniqueFilename,
         originalName: fileName,
         filePath: destinationPath,
+        originalPath: filePath, // Store the original file path
         thumbnailPath: processedResult.thumbnailPath,
         fileSize: stats.size,
         mimeType: ImageProcessingService.getMimeType(fileName),
@@ -319,9 +320,20 @@ export class BatchProcessingService {
           // Parallel: start AI analysis in background without waiting
           console.log(`Starting parallel AI analysis for image ${imageId}`);
           this.processImageAnalysisInBackground(imageId, processedResult.processedPath)
+            .then(() => {
+              // Clean up uploaded file after AI analysis is complete
+              this.cleanupUploadedFile(destinationPath);
+            })
             .catch(error => {
               console.error(`AI analysis failed for image ${imageId}:`, error);
+              // Still clean up the uploaded file even if analysis failed
+              this.cleanupUploadedFile(destinationPath);
             });
+        }
+
+        // For sequential processing, clean up after AI analysis
+        if (batchJob.options.parallelConnections === 1) {
+          this.cleanupUploadedFile(destinationPath);
         }
       }
 
@@ -410,6 +422,15 @@ export class BatchProcessingService {
     }
 
     return `${uuid}_${safeName}${ext}`;
+  }
+
+  private static async cleanupUploadedFile(filePath: string): Promise<void> {
+    try {
+      await fs.unlink(filePath);
+      console.log(`🗑️ Cleaned up uploaded file: ${path.basename(filePath)}`);
+    } catch (error) {
+      console.warn(`Failed to cleanup uploaded file ${filePath}:`, error);
+    }
   }
 
   private static async processImageAnalysisInBackground(imageId: number, imagePath: string): Promise<void> {

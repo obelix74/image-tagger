@@ -41,6 +41,7 @@ export declare class BatchProcessingService {
     private static processFile;
     private static processImagesInParallel;
     private static generateSafeFilename;
+    private static cleanupUploadedFile;
     private static processImageAnalysisInBackground;
     static deleteBatch(batchId: string): Promise<boolean>;
     static clearCompletedBatches(): Promise<number>;

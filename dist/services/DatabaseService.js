@@ -30,6 +30,7 @@ class DatabaseService {
         filename TEXT NOT NULL UNIQUE,
         original_name TEXT NOT NULL,
         file_path TEXT NOT NULL,
+        original_path TEXT,
         thumbnail_path TEXT NOT NULL,
         file_size INTEGER NOT NULL,
         mime_type TEXT NOT NULL,
@@ -106,13 +107,14 @@ class DatabaseService {
         return new Promise((resolve, reject) => {
             this.db.run(`
         INSERT INTO images (
-          filename, original_name, file_path, thumbnail_path, file_size,
+          filename, original_name, file_path, original_path, thumbnail_path, file_size,
           mime_type, width, height, uploaded_at, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
                 imageData.filename,
                 imageData.originalName,
                 imageData.filePath,
+                imageData.originalPath,
                 imageData.thumbnailPath,
                 imageData.fileSize,
                 imageData.mimeType,
@@ -288,6 +290,7 @@ class DatabaseService {
             filename: row.filename,
             originalName: row.original_name,
             filePath: row.file_path,
+            originalPath: row.original_path,
             thumbnailPath: row.thumbnail_path,
             fileSize: row.file_size,
             mimeType: row.mime_type,

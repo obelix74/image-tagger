@@ -94,6 +94,7 @@ router.post('/upload', upload.single('image'), async (req, res): Promise<void> =
       filename: req.file.filename,
       originalName: req.file.originalname,
       filePath: req.file.path,
+      originalPath: undefined, // For uploads, we don't have an original path
       thumbnailPath: processedResult.thumbnailPath,
       fileSize: req.file.size,
       mimeType: ImageProcessingService.getMimeType(req.file.originalname),
@@ -510,6 +511,14 @@ async function processImageInBackground(imageId: number, imagePath: string, useF
 
     // Update status to completed
     await DatabaseService.updateImageStatus(imageId, 'completed');
+
+    // Clean up uploaded file after processing is complete
+    try {
+      await ImageProcessingService.deleteFile(imagePath);
+      console.log(`🗑️ Cleaned up uploaded file for image ${imageId}`);
+    } catch (cleanupError) {
+      console.warn(`Failed to cleanup uploaded file for image ${imageId}:`, cleanupError);
+    }
 
     console.log(`AI analysis completed successfully for image ${imageId}${useFallback ? ' (using fallback)' : ''}`);
 

@@ -233,8 +233,8 @@ const ImageDetail: React.FC = () => {
               )}
               <div className="metadata-item full-width">
                 <label>Full Path:</label>
-                <span className="file-path" title={image.filePath}>
-                  {image.filePath}
+                <span className="file-path" title={image.originalPath || 'Uploaded file'}>
+                  {image.originalPath || 'Uploaded via web interface'}
                 </span>
               </div>
             </div>

@@ -12,6 +12,7 @@ export interface ImageMetadata {
   filename: string;
   originalName: string;
   filePath: string;
+  originalPath?: string;
   thumbnailPath: string;
   fileSize: number;
   mimeType: string;
