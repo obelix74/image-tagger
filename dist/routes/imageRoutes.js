@@ -92,6 +92,21 @@ router.post('/upload', upload.single('image'), async (req, res) => {
         // Save to database
         const imageId = await DatabaseService_1.DatabaseService.insertImage(imageMetadata);
         const savedImage = await DatabaseService_1.DatabaseService.getImage(imageId);
+        // Store EXIF/IPTC metadata if available
+        if (processedResult.metadata) {
+            try {
+                const metadataToStore = {
+                    ...processedResult.metadata,
+                    imageId,
+                    extractedAt: new Date().toISOString()
+                };
+                await DatabaseService_1.DatabaseService.insertImageMetadata(metadataToStore);
+                console.log(`📋 Stored metadata for uploaded image ${imageId}`);
+            }
+            catch (metadataError) {
+                console.warn(`Failed to store metadata for uploaded image ${imageId}:`, metadataError);
+            }
+        }
         // Start background processing
         processImageInBackground(imageId, processedResult.processedPath);
         const response = {
@@ -330,6 +345,31 @@ router.get('/:id/analysis', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to retrieve analysis'
+        });
+    }
+});
+// Get image metadata
+router.get('/:id/metadata', async (req, res) => {
+    try {
+        const imageId = parseInt(req.params.id);
+        if (isNaN(imageId)) {
+            res.status(400).json({
+                success: false,
+                error: 'Invalid image ID'
+            });
+            return;
+        }
+        const metadata = await DatabaseService_1.DatabaseService.getImageMetadata(imageId);
+        res.json({
+            success: true,
+            metadata
+        });
+    }
+    catch (error) {
+        console.error('Get metadata error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get metadata'
         });
     }
 });

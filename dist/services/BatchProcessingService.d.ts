@@ -4,6 +4,7 @@ export interface BatchProcessingOptions {
     geminiImageSize?: number;
     quality?: number;
     skipDuplicates?: boolean;
+    parallelConnections?: number;
 }
 export interface BatchProcessingResult {
     batchId: string;
@@ -38,6 +39,8 @@ export declare class BatchProcessingService {
     private static processBatchInBackground;
     private static discoverImageFiles;
     private static processFile;
+    private static processImagesInParallel;
+    private static generateSafeFilename;
     private static processImageAnalysisInBackground;
     static deleteBatch(batchId: string): Promise<boolean>;
     static clearCompletedBatches(): Promise<number>;

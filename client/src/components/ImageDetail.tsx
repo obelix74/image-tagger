@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { imageApi, type ImageMetadata, type GeminiAnalysis } from '../services/api';
+import { imageApi, type ImageMetadata, type GeminiAnalysis, type ImageExifMetadata } from '../services/api';
 import './ImageDetail.css';
 
 const ImageDetail: React.FC = () => {
@@ -8,6 +8,7 @@ const ImageDetail: React.FC = () => {
   const navigate = useNavigate();
   const [image, setImage] = useState<ImageMetadata | null>(null);
   const [analysis, setAnalysis] = useState<GeminiAnalysis | null>(null);
+  const [metadata, setMetadata] = useState<ImageExifMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,16 @@ const ImageDetail: React.FC = () => {
       const imageResponse = await imageApi.getImage(imageId);
       if (imageResponse.success && imageResponse.image) {
         setImage(imageResponse.image);
+
+        // Load metadata (always available after processing)
+        try {
+          const metadataResponse = await imageApi.getImageMetadata(imageId);
+          if (metadataResponse.success && metadataResponse.metadata) {
+            setMetadata(metadataResponse.metadata);
+          }
+        } catch (metadataError) {
+          console.warn('Metadata not available');
+        }
 
         // Try to load analysis if image is completed
         if (imageResponse.image.status === 'completed') {
@@ -220,8 +231,97 @@ const ImageDetail: React.FC = () => {
                   <span>{formatDate(image.processedAt)}</span>
                 </div>
               )}
+              <div className="metadata-item full-width">
+                <label>Full Path:</label>
+                <span className="file-path" title={image.filePath}>
+                  {image.filePath}
+                </span>
+              </div>
             </div>
           </div>
+
+          {metadata && (
+            <div className="metadata-section">
+              <h3>Photo Information</h3>
+
+              {/* Location Information */}
+              {(metadata.latitude && metadata.longitude) && (
+                <div className="metadata-group">
+                  <h4>📍 Location</h4>
+                  <div className="location-info">
+                    <p>
+                      <strong>Coordinates:</strong> {metadata.latitude.toFixed(6)}, {metadata.longitude.toFixed(6)}
+                    </p>
+                    {metadata.city && (
+                      <p><strong>City:</strong> {metadata.city}</p>
+                    )}
+                    {metadata.state && (
+                      <p><strong>State/Province:</strong> {metadata.state}</p>
+                    )}
+                    {metadata.country && (
+                      <p><strong>Country:</strong> {metadata.country}</p>
+                    )}
+                    <a
+                      href={`https://www.google.com/maps?q=${metadata.latitude},${metadata.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="map-link"
+                    >
+                      View on Google Maps 🗺️
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Camera Information */}
+              {(metadata.make || metadata.model) && (
+                <div className="metadata-group">
+                  <h4>📷 Camera</h4>
+                  {metadata.make && <p><strong>Make:</strong> {metadata.make}</p>}
+                  {metadata.model && <p><strong>Model:</strong> {metadata.model}</p>}
+                  {metadata.software && <p><strong>Software:</strong> {metadata.software}</p>}
+                </div>
+              )}
+
+              {/* Photo Settings */}
+              {(metadata.iso || metadata.fNumber || metadata.exposureTime || metadata.focalLength) && (
+                <div className="metadata-group">
+                  <h4>⚙️ Settings</h4>
+                  {metadata.iso && <p><strong>ISO:</strong> {metadata.iso}</p>}
+                  {metadata.fNumber && <p><strong>Aperture:</strong> f/{metadata.fNumber}</p>}
+                  {metadata.exposureTime && <p><strong>Shutter Speed:</strong> {metadata.exposureTime}s</p>}
+                  {metadata.focalLength && <p><strong>Focal Length:</strong> {metadata.focalLength}mm</p>}
+                  {metadata.flash && <p><strong>Flash:</strong> {metadata.flash}</p>}
+                  {metadata.whiteBalance && <p><strong>White Balance:</strong> {metadata.whiteBalance}</p>}
+                </div>
+              )}
+
+              {/* IPTC Information */}
+              {(metadata.title || metadata.description || metadata.creator || metadata.copyright) && (
+                <div className="metadata-group">
+                  <h4>📝 IPTC Data</h4>
+                  {metadata.title && <p><strong>Title:</strong> {metadata.title}</p>}
+                  {metadata.description && <p><strong>Description:</strong> {metadata.description}</p>}
+                  {metadata.creator && <p><strong>Creator:</strong> {metadata.creator}</p>}
+                  {metadata.copyright && <p><strong>Copyright:</strong> {metadata.copyright}</p>}
+                  {metadata.keywords && <p><strong>Keywords:</strong> {metadata.keywords}</p>}
+                </div>
+              )}
+
+              {/* Date Information */}
+              {(metadata.dateTimeOriginal || metadata.dateTimeDigitized) && (
+                <div className="metadata-group">
+                  <h4>📅 Dates</h4>
+                  {metadata.dateTimeOriginal && (
+                    <p><strong>Date Taken:</strong> {new Date(metadata.dateTimeOriginal).toLocaleString()}</p>
+                  )}
+                  {metadata.dateTimeDigitized && (
+                    <p><strong>Date Digitized:</strong> {new Date(metadata.dateTimeDigitized).toLocaleString()}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="analysis-section">

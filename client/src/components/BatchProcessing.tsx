@@ -9,7 +9,8 @@ const BatchProcessing: React.FC = () => {
     skipDuplicates: true,
     thumbnailSize: 300,
     geminiImageSize: 1024,
-    quality: 85
+    quality: 85,
+    parallelConnections: 1
   });
   const [batches, setBatches] = useState<BatchJob[]>([]);
   const [loading, setLoading] = useState(false);
@@ -203,6 +204,30 @@ const BatchProcessing: React.FC = () => {
                 max="100"
                 disabled={loading}
               />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="parallelConnections">
+                Parallel Gemini Connections: {options.parallelConnections}
+              </label>
+              <input
+                id="parallelConnections"
+                type="range"
+                min="1"
+                max="10"
+                value={options.parallelConnections}
+                onChange={(e) => setOptions({...options, parallelConnections: parseInt(e.target.value)})}
+                disabled={loading}
+                className="slider"
+              />
+              <div className="slider-labels">
+                <span>1 (Sequential)</span>
+                <span>10 (Max Parallel)</span>
+              </div>
+              <small className="help-text">
+                Higher values process images faster but may hit API rate limits.
+                Start with 1 for reliability, increase gradually if needed.
+              </small>
             </div>
 
             <div className="form-group checkbox-group">

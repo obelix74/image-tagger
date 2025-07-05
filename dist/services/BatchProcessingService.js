@@ -22,7 +22,8 @@ class BatchProcessingService {
                 thumbnailSize: options.thumbnailSize || parseInt(process.env.THUMBNAIL_SIZE || '300'),
                 geminiImageSize: options.geminiImageSize || parseInt(process.env.GEMINI_IMAGE_SIZE || '1024'),
                 quality: options.quality || 85,
-                skipDuplicates: options.skipDuplicates !== false
+                skipDuplicates: options.skipDuplicates !== false,
+                parallelConnections: options.parallelConnections || 1
             },
             result: {
                 batchId,
@@ -62,27 +63,36 @@ class BatchProcessingService {
             // Ensure directories exist
             await ImageProcessingService_1.ImageProcessingService.ensureDirectoryExists(uploadDir);
             await ImageProcessingService_1.ImageProcessingService.ensureDirectoryExists(thumbnailDir);
-            // Process each file sequentially (including AI analysis)
-            for (let i = 0; i < imageFiles.length; i++) {
-                const filePath = imageFiles[i];
-                console.log(`📸 Processing image ${i + 1}/${imageFiles.length}: ${path_1.default.basename(filePath)}`);
-                try {
-                    await this.processFile(filePath, batchJob, uploadDir, thumbnailDir);
-                    console.log(`✅ Successfully processed image ${i + 1}/${imageFiles.length}`);
+            // Process images with parallel connections
+            const parallelConnections = batchJob.options.parallelConnections || 1;
+            if (parallelConnections === 1) {
+                // Sequential processing (original behavior)
+                for (let i = 0; i < imageFiles.length; i++) {
+                    const filePath = imageFiles[i];
+                    console.log(`📸 Processing image ${i + 1}/${imageFiles.length}: ${path_1.default.basename(filePath)}`);
+                    try {
+                        await this.processFile(filePath, batchJob, uploadDir, thumbnailDir);
+                        console.log(`✅ Successfully processed image ${i + 1}/${imageFiles.length}`);
+                    }
+                    catch (error) {
+                        console.error(`❌ Error processing file ${filePath}:`, error);
+                        batchJob.result.errorFiles++;
+                        batchJob.result.errors.push({
+                            file: filePath,
+                            error: error instanceof Error ? error.message : 'Unknown error',
+                            type: 'processing'
+                        });
+                    }
+                    batchJob.result.processedFiles++;
+                    // Log progress
+                    const progress = Math.round((batchJob.result.processedFiles / batchJob.result.totalFiles) * 100);
+                    console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%)`);
                 }
-                catch (error) {
-                    console.error(`❌ Error processing file ${filePath}:`, error);
-                    batchJob.result.errorFiles++;
-                    batchJob.result.errors.push({
-                        file: filePath,
-                        error: error instanceof Error ? error.message : 'Unknown error',
-                        type: 'processing'
-                    });
-                }
-                batchJob.result.processedFiles++;
-                // Log progress
-                const progress = Math.round((batchJob.result.processedFiles / batchJob.result.totalFiles) * 100);
-                console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%)`);
+            }
+            else {
+                // Parallel processing
+                console.log(`🚀 Processing ${imageFiles.length} images with ${parallelConnections} parallel connections`);
+                await this.processImagesInParallel(batchJob, imageFiles, uploadDir, thumbnailDir, parallelConnections);
             }
             // Mark batch as completed
             batchJob.result.status = 'completed';
@@ -168,8 +178,8 @@ class BatchProcessingService {
                 return;
             }
         }
-        // Generate unique filename
-        const uniqueFilename = `${(0, uuid_1.v4)()}_${fileName}`;
+        // Generate unique filename with length handling
+        const uniqueFilename = this.generateSafeFilename(fileName);
         const destinationPath = path_1.default.join(uploadDir, uniqueFilename);
         // Copy file to upload directory
         try {
@@ -206,11 +216,36 @@ class BatchProcessingService {
             const savedImage = await DatabaseService_1.DatabaseService.getImage(imageId);
             if (savedImage) {
                 batchJob.result.processedImages.push(savedImage);
-                batchJob.result.successfulFiles++;
-                // Wait for AI analysis to complete before processing next image
-                console.log(`Starting sequential AI analysis for image ${imageId}`);
-                await this.processImageAnalysisInBackground(imageId, processedResult.processedPath);
-                console.log(`Completed AI analysis for image ${imageId}, ready for next image`);
+                // Store EXIF/IPTC metadata if available
+                if (processedResult.metadata) {
+                    try {
+                        const metadataToStore = {
+                            ...processedResult.metadata,
+                            imageId,
+                            extractedAt: new Date().toISOString()
+                        };
+                        await DatabaseService_1.DatabaseService.insertImageMetadata(metadataToStore);
+                        console.log(`📋 Stored metadata for image ${imageId}`);
+                    }
+                    catch (metadataError) {
+                        console.warn(`Failed to store metadata for image ${imageId}:`, metadataError);
+                    }
+                }
+                // Start AI analysis (parallel or sequential based on settings)
+                if (batchJob.options.parallelConnections === 1) {
+                    // Sequential: wait for AI analysis to complete
+                    console.log(`Starting sequential AI analysis for image ${imageId}`);
+                    await this.processImageAnalysisInBackground(imageId, processedResult.processedPath);
+                    console.log(`Completed AI analysis for image ${imageId}, ready for next image`);
+                }
+                else {
+                    // Parallel: start AI analysis in background without waiting
+                    console.log(`Starting parallel AI analysis for image ${imageId}`);
+                    this.processImageAnalysisInBackground(imageId, processedResult.processedPath)
+                        .catch(error => {
+                        console.error(`AI analysis failed for image ${imageId}:`, error);
+                    });
+                }
             }
         }
         catch (error) {
@@ -223,6 +258,63 @@ class BatchProcessingService {
             }
             throw error;
         }
+    }
+    static async processImagesInParallel(batchJob, imageFiles, uploadDir, thumbnailDir, parallelConnections) {
+        const semaphore = new Array(parallelConnections).fill(null);
+        let currentIndex = 0;
+        const processNext = async () => {
+            while (currentIndex < imageFiles.length) {
+                const index = currentIndex++;
+                const filePath = imageFiles[index];
+                console.log(`📸 Processing image ${index + 1}/${imageFiles.length}: ${path_1.default.basename(filePath)}`);
+                try {
+                    await this.processFile(filePath, batchJob, uploadDir, thumbnailDir);
+                    console.log(`✅ Successfully processed image ${index + 1}/${imageFiles.length}`);
+                    batchJob.result.successfulFiles++;
+                }
+                catch (error) {
+                    console.error(`❌ Error processing file ${filePath}:`, error);
+                    batchJob.result.errorFiles++;
+                    batchJob.result.errors.push({
+                        file: filePath,
+                        error: error instanceof Error ? error.message : 'Unknown error',
+                        type: 'processing'
+                    });
+                }
+                batchJob.result.processedFiles++;
+                // Log progress
+                const progress = Math.round((batchJob.result.processedFiles / batchJob.result.totalFiles) * 100);
+                console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%)`);
+            }
+        };
+        // Start parallel workers
+        const workers = semaphore.map(() => processNext());
+        await Promise.all(workers);
+    }
+    static generateSafeFilename(originalFilename) {
+        const uuid = (0, uuid_1.v4)();
+        const ext = path_1.default.extname(originalFilename);
+        const baseName = path_1.default.parse(originalFilename).name;
+        // Maximum filename length (most filesystems support 255 characters)
+        // Reserve space for UUID (36 chars) + underscore (1) + extension
+        const maxBaseNameLength = 255 - 36 - 1 - ext.length;
+        let safeName = baseName;
+        // Truncate if too long
+        if (safeName.length > maxBaseNameLength) {
+            safeName = safeName.substring(0, maxBaseNameLength);
+            console.log(`Truncated long filename: "${originalFilename}" -> "${safeName}${ext}"`);
+        }
+        // Remove or replace problematic characters
+        safeName = safeName
+            .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') // Replace invalid characters
+            .replace(/\s+/g, '_') // Replace spaces with underscores
+            .replace(/_{2,}/g, '_') // Replace multiple underscores with single
+            .replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
+        // Ensure we have a valid name
+        if (!safeName) {
+            safeName = 'image';
+        }
+        return `${uuid}_${safeName}${ext}`;
     }
     static async processImageAnalysisInBackground(imageId, imagePath) {
         try {

@@ -59,10 +59,10 @@ class ImageProcessingService {
             .toFile(thumbnailPath);
         // Get image dimensions
         const imageInfo = await (0, sharp_1.default)(imageBuffer).metadata();
-        // Extract EXIF data
+        // Extract comprehensive EXIF/IPTC data
         let metadata;
         try {
-            metadata = await exifr_1.default.parse(imageBuffer);
+            metadata = await this.extractComprehensiveMetadata(imageBuffer);
         }
         catch (error) {
             console.warn('Failed to extract EXIF data:', error);
@@ -109,11 +109,33 @@ class ImageProcessingService {
     }
     static getProcessedFilename(originalFilename) {
         const name = path_1.default.parse(originalFilename).name;
-        return `${name}_processed.jpg`;
+        const safeName = this.sanitizeFilename(name);
+        return `${safeName}_processed.jpg`;
     }
     static getThumbnailFilename(originalFilename) {
         const name = path_1.default.parse(originalFilename).name;
-        return `${name}_thumb.jpg`;
+        const safeName = this.sanitizeFilename(name);
+        return `${safeName}_thumb.jpg`;
+    }
+    static sanitizeFilename(filename) {
+        // Maximum filename length for components (reserve space for suffixes)
+        const maxLength = 200;
+        let safeName = filename;
+        // Truncate if too long
+        if (safeName.length > maxLength) {
+            safeName = safeName.substring(0, maxLength);
+        }
+        // Remove or replace problematic characters
+        safeName = safeName
+            .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') // Replace invalid characters
+            .replace(/\s+/g, '_') // Replace spaces with underscores
+            .replace(/_{2,}/g, '_') // Replace multiple underscores with single
+            .replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
+        // Ensure we have a valid name
+        if (!safeName) {
+            safeName = 'image';
+        }
+        return safeName;
     }
     static async ensureDirectoryExists(dirPath) {
         try {
@@ -133,6 +155,99 @@ class ImageProcessingService {
     }
     static getFileSize(filePath) {
         return promises_1.default.stat(filePath).then(stats => stats.size);
+    }
+    static async extractComprehensiveMetadata(imageBuffer) {
+        try {
+            // Extract all available EXIF, IPTC, and XMP data
+            const exifData = await exifr_1.default.parse(imageBuffer, {
+                exif: true,
+                iptc: true,
+                xmp: true,
+                icc: true,
+                gps: true,
+                interop: true,
+                makerNote: false // Skip maker notes to avoid large data
+            });
+            if (!exifData) {
+                return null;
+            }
+            // Extract GPS coordinates
+            let latitude;
+            let longitude;
+            let altitude;
+            if (exifData.latitude && exifData.longitude) {
+                latitude = exifData.latitude;
+                longitude = exifData.longitude;
+                altitude = exifData.altitude;
+            }
+            else if (exifData.GPSLatitude && exifData.GPSLongitude) {
+                // Handle different GPS coordinate formats
+                latitude = this.convertGPSCoordinate(exifData.GPSLatitude, exifData.GPSLatitudeRef);
+                longitude = this.convertGPSCoordinate(exifData.GPSLongitude, exifData.GPSLongitudeRef);
+                altitude = exifData.GPSAltitude;
+            }
+            // Extract IPTC keywords
+            let keywords;
+            if (exifData.Keywords) {
+                if (Array.isArray(exifData.Keywords)) {
+                    keywords = exifData.Keywords.join(', ');
+                }
+                else {
+                    keywords = exifData.Keywords;
+                }
+            }
+            return {
+                // GPS Location
+                latitude,
+                longitude,
+                altitude,
+                // Camera Information
+                make: exifData.Make,
+                model: exifData.Model,
+                software: exifData.Software,
+                // Photo Settings
+                iso: exifData.ISO,
+                fNumber: exifData.FNumber,
+                exposureTime: exifData.ExposureTime?.toString(),
+                focalLength: exifData.FocalLength,
+                flash: exifData.Flash?.toString(),
+                whiteBalance: exifData.WhiteBalance?.toString(),
+                // Date/Time
+                dateTimeOriginal: exifData.DateTimeOriginal?.toISOString?.() || exifData.DateTimeOriginal,
+                dateTimeDigitized: exifData.DateTimeDigitized?.toISOString?.() || exifData.DateTimeDigitized,
+                // IPTC/XMP Data
+                title: exifData.Title || exifData.ObjectName,
+                description: exifData.Description || exifData.Caption || exifData.ImageDescription,
+                keywords,
+                creator: exifData.Creator || exifData.Artist || exifData.By,
+                copyright: exifData.Copyright || exifData.CopyrightNotice,
+                city: exifData.City,
+                state: exifData.State || exifData.Province,
+                country: exifData.Country,
+                // Technical
+                colorSpace: exifData.ColorSpace?.toString(),
+                orientation: exifData.Orientation,
+                xResolution: exifData.XResolution,
+                yResolution: exifData.YResolution,
+                resolutionUnit: exifData.ResolutionUnit?.toString(),
+                // Raw EXIF JSON for advanced users
+                rawExif: JSON.stringify(exifData)
+            };
+        }
+        catch (error) {
+            console.warn('Failed to extract comprehensive metadata:', error);
+            return null;
+        }
+    }
+    static convertGPSCoordinate(coordinate, ref) {
+        if (typeof coordinate === 'number') {
+            return ref === 'S' || ref === 'W' ? -coordinate : coordinate;
+        }
+        if (Array.isArray(coordinate) && coordinate.length >= 3) {
+            const decimal = coordinate[0] + coordinate[1] / 60 + coordinate[2] / 3600;
+            return ref === 'S' || ref === 'W' ? -decimal : decimal;
+        }
+        return undefined;
     }
 }
 exports.ImageProcessingService = ImageProcessingService;

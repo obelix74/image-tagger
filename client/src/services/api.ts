@@ -77,6 +77,48 @@ export interface BatchProcessingOptions {
   geminiImageSize?: number;
   quality?: number;
   skipDuplicates?: boolean;
+  parallelConnections?: number;
+}
+
+export interface ImageExifMetadata {
+  id?: number;
+  imageId: number;
+  // GPS Location
+  latitude?: number;
+  longitude?: number;
+  altitude?: number;
+  // Camera Information
+  make?: string;
+  model?: string;
+  software?: string;
+  // Photo Settings
+  iso?: number;
+  fNumber?: number;
+  exposureTime?: string;
+  focalLength?: number;
+  flash?: string;
+  whiteBalance?: string;
+  // Date/Time
+  dateTimeOriginal?: string;
+  dateTimeDigitized?: string;
+  // IPTC/XMP Data
+  title?: string;
+  description?: string;
+  keywords?: string;
+  creator?: string;
+  copyright?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  // Technical
+  colorSpace?: string;
+  orientation?: number;
+  xResolution?: number;
+  yResolution?: number;
+  resolutionUnit?: string;
+  // Raw EXIF JSON for advanced users
+  rawExif?: string;
+  extractedAt: string;
 }
 
 export interface BatchProcessingResult {
@@ -188,6 +230,12 @@ export const imageApi = {
 
   deleteBatch: async (batchId: string): Promise<BatchResponse> => {
     const response = await api.delete(`/images/batch/${batchId}`);
+    return response.data;
+  },
+
+  // Get image metadata
+  getImageMetadata: async (imageId: number): Promise<{ success: boolean; metadata?: ImageExifMetadata; error?: string }> => {
+    const response = await api.get(`/images/${imageId}/metadata`);
     return response.data;
   },
 

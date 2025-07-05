@@ -1,4 +1,4 @@
-import { ImageMetadata, GeminiAnalysis } from '../types';
+import { ImageMetadata, GeminiAnalysis, ImageExifMetadata } from '../types';
 export declare class DatabaseService {
     private static db;
     static initialize(): Promise<void>;
@@ -18,6 +18,9 @@ export declare class DatabaseService {
     static insertAnalysis(analysisData: Omit<GeminiAnalysis, 'id'>): Promise<number>;
     static getAnalysis(imageId: number): Promise<GeminiAnalysis | null>;
     private static mapRowToImageMetadata;
+    static insertImageMetadata(metadataData: Omit<ImageExifMetadata, 'id'>): Promise<number>;
+    static getImageMetadata(imageId: number): Promise<ImageExifMetadata | null>;
+    private static mapRowToImageExifMetadata;
     static close(): Promise<void>;
 }
 //# sourceMappingURL=DatabaseService.d.ts.map

@@ -15,8 +15,11 @@ export declare class ImageProcessingService {
     static resizeForGemini(imagePath: string, maxSize?: number): Promise<Buffer>;
     private static getProcessedFilename;
     private static getThumbnailFilename;
+    private static sanitizeFilename;
     static ensureDirectoryExists(dirPath: string): Promise<void>;
     static deleteFile(filePath: string): Promise<void>;
     static getFileSize(filePath: string): Promise<number>;
+    private static extractComprehensiveMetadata;
+    private static convertGPSCoordinate;
 }
 //# sourceMappingURL=ImageProcessingService.d.ts.map

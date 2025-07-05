@@ -13,6 +13,39 @@ export interface ImageMetadata {
     status: 'uploaded' | 'processing' | 'completed' | 'error';
     errorMessage?: string;
 }
+export interface ImageExifMetadata {
+    id?: number;
+    imageId: number;
+    latitude?: number;
+    longitude?: number;
+    altitude?: number;
+    make?: string;
+    model?: string;
+    software?: string;
+    iso?: number;
+    fNumber?: number;
+    exposureTime?: string;
+    focalLength?: number;
+    flash?: string;
+    whiteBalance?: string;
+    dateTimeOriginal?: string;
+    dateTimeDigitized?: string;
+    title?: string;
+    description?: string;
+    keywords?: string;
+    creator?: string;
+    copyright?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    colorSpace?: string;
+    orientation?: number;
+    xResolution?: number;
+    yResolution?: number;
+    resolutionUnit?: string;
+    rawExif?: string;
+    extractedAt: string;
+}
 export interface GeminiAnalysis {
     id?: number;
     imageId: number;
@@ -42,6 +75,13 @@ export interface SupportedFormat {
     extension: string;
     mimeType: string;
     isRaw: boolean;
+}
+export interface BatchProcessingOptions {
+    thumbnailSize?: number;
+    geminiImageSize?: number;
+    quality?: number;
+    skipDuplicates?: boolean;
+    parallelConnections?: number;
 }
 export interface ImageProcessingOptions {
     thumbnailSize: number;
