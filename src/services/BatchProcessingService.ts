@@ -285,7 +285,8 @@ export class BatchProcessingService {
         width: processedResult.width,
         height: processedResult.height,
         uploadedAt: new Date().toISOString(),
-        status: 'uploaded'
+        status: 'uploaded',
+        userId: 1 // Default to admin user for batch processing
       };
 
       // Save to database

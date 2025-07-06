@@ -6,6 +6,10 @@ import { ImageMetadata, GeminiAnalysis, ImageExifMetadata } from '../types';
 export class DatabaseService {
   private static db: sqlite3.Database;
 
+  static getDatabase(): sqlite3.Database {
+    return this.db;
+  }
+
   static async initialize(): Promise<void> {
     const dbPath = process.env.DATABASE_PATH || './database.sqlite';
     
@@ -26,6 +30,20 @@ export class DatabaseService {
   private static async createTables(): Promise<void> {
     const run = promisify(this.db.run.bind(this.db));
 
+    // Create users table
+    await run(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        email TEXT,
+        name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT
+      )
+    `);
+
     // Create images table
     await run(`
       CREATE TABLE IF NOT EXISTS images (
@@ -42,7 +60,9 @@ export class DatabaseService {
         uploaded_at TEXT NOT NULL,
         processed_at TEXT,
         status TEXT NOT NULL DEFAULT 'uploaded',
-        error_message TEXT
+        error_message TEXT,
+        user_id INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       )
     `);
 
@@ -99,9 +119,14 @@ export class DatabaseService {
     `);
 
     // Create indexes for better performance
+    await run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users (username)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_images_status ON images (status)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_images_uploaded_at ON images (uploaded_at)`);
+    await run(`CREATE INDEX IF NOT EXISTS idx_images_user_id ON images (user_id)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_analysis_image_id ON gemini_analysis (image_id)`);
+
+    // Create default admin user if not exists
+    await this.createDefaultAdminIfNotExists();
     await run(`CREATE INDEX IF NOT EXISTS idx_metadata_image_id ON image_metadata (image_id)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_metadata_location ON image_metadata (latitude, longitude)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_metadata_make_model ON image_metadata (make, model)`);
@@ -115,8 +140,8 @@ export class DatabaseService {
       this.db.run(`
         INSERT INTO images (
           filename, original_name, file_path, original_path, thumbnail_path, file_size,
-          mime_type, width, height, uploaded_at, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          mime_type, width, height, uploaded_at, status, user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         imageData.filename,
         imageData.originalName,
@@ -128,7 +153,8 @@ export class DatabaseService {
         imageData.width,
         imageData.height,
         imageData.uploadedAt,
-        imageData.status
+        imageData.status,
+        imageData.userId
       ], function(err) {
         if (err) {
           reject(err);
@@ -165,12 +191,19 @@ export class DatabaseService {
     return this.mapRowToImageMetadata(row);
   }
 
-  static async getAllImages(page?: number, limit?: number): Promise<{ images: ImageMetadata[], total: number, page: number, totalPages: number }> {
+  static async getAllImages(page?: number, limit?: number, userId?: number): Promise<{ images: ImageMetadata[], total: number, page: number, totalPages: number }> {
     const all = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
     const get = promisify(this.db.get.bind(this.db)) as (sql: string) => Promise<any>;
 
+    // Build WHERE clause for user filtering
+    const whereClause = userId ? 'WHERE user_id = ?' : '';
+    const whereParams = userId ? [userId] : [];
+
     // Get total count
-    const countResult = await get(`SELECT COUNT(*) as total FROM images`) as { total: number };
+    const countQuery = `SELECT COUNT(*) as total FROM images ${whereClause}`;
+    const countResult = await (whereParams.length > 0 ?
+      (promisify(this.db.get.bind(this.db)) as (sql: string, params: any[]) => Promise<any>)(countQuery, whereParams) :
+      get(countQuery)) as { total: number };
     const total = countResult.total;
 
     if (page !== undefined && limit !== undefined) {
@@ -178,9 +211,10 @@ export class DatabaseService {
       const offset = (page - 1) * limit;
       const rows = await all(`
         SELECT * FROM images
+        ${whereClause}
         ORDER BY uploaded_at DESC
         LIMIT ? OFFSET ?
-      `, [limit, offset]) as any[];
+      `, [...whereParams, limit, offset]) as any[];
 
       const totalPages = Math.ceil(total / limit);
 
@@ -194,8 +228,9 @@ export class DatabaseService {
       // Non-paginated query (backward compatibility)
       const rows = await all(`
         SELECT * FROM images
+        ${whereClause}
         ORDER BY uploaded_at DESC
-      `) as any[];
+      `, whereParams) as any[];
 
       return {
         images: rows.map(this.mapRowToImageMetadata),
@@ -222,29 +257,43 @@ export class DatabaseService {
     return this.mapRowToImageMetadata(row);
   }
 
-  static async searchImagesByKeyword(keyword: string): Promise<ImageMetadata[]> {
+  static async searchImagesByKeyword(keyword: string, userId?: number): Promise<ImageMetadata[]> {
     const all = promisify(this.db.all.bind(this.db)) as (sql: string, params: any[]) => Promise<any[]>;
+
+    const whereClause = userId ? 'WHERE ga.keywords LIKE ? AND i.user_id = ?' : 'WHERE ga.keywords LIKE ?';
+    const params = userId ? [`%"${keyword}"%`, userId] : [`%"${keyword}"%`];
 
     const rows = await all(`
       SELECT DISTINCT i.* FROM images i
       INNER JOIN gemini_analysis ga ON i.id = ga.image_id
-      WHERE ga.keywords LIKE ?
+      ${whereClause}
       ORDER BY i.uploaded_at DESC
-    `, [`%"${keyword}"%`]) as any[];
+    `, params) as any[];
 
     return rows.map(this.mapRowToImageMetadata);
   }
 
-  static async searchImages(searchTerm: string): Promise<ImageMetadata[]> {
+  static async searchImages(searchTerm: string, userId?: number): Promise<ImageMetadata[]> {
     const all = promisify(this.db.all.bind(this.db)) as (sql: string, params: any[]) => Promise<any[]>;
 
     const searchPattern = `%${searchTerm}%`;
+
+    const userFilter = userId ? 'AND i.user_id = ?' : '';
+    const params = [
+      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+      searchPattern, searchPattern, searchPattern, searchPattern
+    ];
+
+    if (userId) {
+      params.push(userId.toString());
+    }
 
     const rows = await all(`
       SELECT DISTINCT i.* FROM images i
       LEFT JOIN gemini_analysis ga ON i.id = ga.image_id
       LEFT JOIN image_metadata im ON i.id = im.image_id
-      WHERE
+      WHERE (
         i.original_name LIKE ? OR
         i.filename LIKE ? OR
         ga.description LIKE ? OR
@@ -259,12 +308,9 @@ export class DatabaseService {
         im.city LIKE ? OR
         im.state LIKE ? OR
         im.country LIKE ?
+      ) ${userFilter}
       ORDER BY i.uploaded_at DESC
-    `, [
-      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
-      searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
-      searchPattern, searchPattern, searchPattern, searchPattern
-    ]) as any[];
+    `, params) as any[];
 
     return rows.map(this.mapRowToImageMetadata);
   }
@@ -327,7 +373,8 @@ export class DatabaseService {
       uploadedAt: row.uploaded_at,
       processedAt: row.processed_at,
       status: row.status,
-      errorMessage: row.error_message
+      errorMessage: row.error_message,
+      userId: row.user_id || 1
     };
   }
 
@@ -426,6 +473,28 @@ export class DatabaseService {
       rawExif: row.raw_exif,
       extractedAt: row.extracted_at
     };
+  }
+
+  private static async createDefaultAdminIfNotExists(): Promise<void> {
+    const get = promisify(this.db.get.bind(this.db)) as (sql: string, params: any[]) => Promise<any>;
+    const run = promisify(this.db.run.bind(this.db));
+
+    // Check if admin user already exists
+    const existingAdmin = await get(`
+      SELECT id FROM users WHERE username = ?
+    `, ['admin']);
+
+    if (!existingAdmin) {
+      const now = new Date().toISOString();
+      const bcrypt = require('bcrypt');
+      const passwordHash = await bcrypt.hash('admin123', 12);
+      const runWithParams = promisify(this.db.run.bind(this.db)) as (sql: string, ...params: any[]) => Promise<any>;
+      await runWithParams(`
+        INSERT INTO users (username, email, name, password_hash, is_admin, created_at, last_login_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, 'admin', 'admin@image-tagger.local', 'Default Admin', passwordHash, 1, now, now);
+      console.log('Created default admin user (username: admin, password: admin123)');
+    }
   }
 
   static async close(): Promise<void> {

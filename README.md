@@ -4,6 +4,14 @@ An intelligent image tagging application powered by Google's Gemini AI that auto
 
 ## Features
 
+### 🔐 Multi-User Authentication
+- **Username/Password Authentication**: Simple and secure login system
+- **User Registration**: Create new accounts with optional email for password reset
+- **User Management**: Individual user accounts with admin privileges
+- **Session Management**: Secure session handling with cookies
+- **User Isolation**: Each user sees only their own images and data
+- **Default Admin**: Automatic admin user creation for initial setup
+
 ### 🤖 AI-Powered Analysis
 - **Google Gemini Integration**: Advanced AI analysis generating:
   - Detailed image descriptions
@@ -113,6 +121,36 @@ scripts\setup.bat
 2. Sign in with your Google account
 3. Click "Create API Key"
 4. Copy the generated key and add it to your `.env` file
+
+## Setup
+
+### Authentication Setup
+
+The application uses username/password authentication with the following features:
+
+- **Simple Login**: Username and password authentication
+- **User Registration**: Create new accounts with optional email
+- **Password Reset**: Email required for password reset functionality
+- **Default Admin**: Pre-created admin account for initial access
+
+### Database Migration
+
+Run the database migration to set up user authentication:
+
+```bash
+npm run migrate:username
+```
+
+This will:
+- Create the users table with username/password authentication
+- Add user_id column to existing tables
+- Create a default admin user (username: `admin`, password: `admin123`)
+- Assign existing images to the admin user
+
+**Default Admin Credentials:**
+- Username: `admin`
+- Password: `admin123`
+- **Important**: Change the default password after first login!
 
 ## Usage
 
@@ -333,6 +371,13 @@ image-tagger/
 
 ## API Endpoints
 
+### Authentication
+- `POST /api/auth/login` - Login with username/password
+- `POST /api/auth/register` - Register new user account
+- `GET /api/auth/user` - Get current user information
+- `GET /api/auth/status` - Check authentication status
+- `POST /api/auth/logout` - Logout current user
+
 ### Core Image Operations
 - `GET /api/health` - Health check
 - `GET /api/images` - Get all images (supports pagination: `?page=1&limit=12`)
@@ -362,9 +407,13 @@ Environment variables in `.env`:
 # Gemini AI API Configuration
 GEMINI_API_KEY=your_gemini_api_key_here
 
+# Authentication Configuration
+SESSION_SECRET=your-super-secret-session-key-change-in-production
+
 # Server Configuration
 PORT=3001
 NODE_ENV=development
+CLIENT_URL=http://localhost:5173
 
 # Database Configuration
 DATABASE_PATH=./database.sqlite

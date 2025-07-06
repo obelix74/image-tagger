@@ -2,8 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import session from 'express-session';
 import { DatabaseService } from './services/DatabaseService';
 import { imageRoutes } from './routes/imageRoutes';
+import { authRoutes } from './routes/authRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -12,9 +14,24 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -32,6 +49,7 @@ const initializeDatabase = async () => {
 };
 
 // Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/images', imageRoutes);
 
 // Health check endpoint

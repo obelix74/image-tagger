@@ -13,6 +13,8 @@ const DatabaseService_1 = require("../services/DatabaseService");
 const ImageProcessingService_1 = require("../services/ImageProcessingService");
 const GeminiService_1 = require("../services/GeminiService");
 const BatchProcessingService_1 = require("../services/BatchProcessingService");
+const auth_1 = require("../middleware/auth");
+const UserService_1 = require("../services/UserService");
 const router = express_1.default.Router();
 exports.imageRoutes = router;
 // Configure multer for file uploads
@@ -40,11 +42,16 @@ const upload = (0, multer_1.default)({
     }
 });
 // Upload and process image
-router.post('/upload', upload.single('image'), async (req, res) => {
+router.post('/upload', upload.single('image'), auth_1.requireAuth, async (req, res) => {
     try {
         if (!req.file) {
             res.status(400).json({ success: false, error: 'No file uploaded' });
             return;
+        }
+        // Get current user or default admin
+        let currentUser = req.user;
+        if (!currentUser) {
+            currentUser = await UserService_1.UserService.getDefaultAdminUser();
         }
         // Check for duplicate files
         const existingImage = await DatabaseService_1.DatabaseService.findDuplicateImage(req.file.originalname, req.file.size);
@@ -88,7 +95,8 @@ router.post('/upload', upload.single('image'), async (req, res) => {
             width: processedResult.width,
             height: processedResult.height,
             uploadedAt: new Date().toISOString(),
-            status: 'uploaded'
+            status: 'uploaded',
+            userId: currentUser.id
         };
         // Save to database
         const imageId = await DatabaseService_1.DatabaseService.insertImage(imageMetadata);
@@ -125,7 +133,7 @@ router.post('/upload', upload.single('image'), async (req, res) => {
     }
 });
 // General search across all metadata (must come before /:id route)
-router.get('/search', async (req, res) => {
+router.get('/search', auth_1.optionalAuth, async (req, res) => {
     try {
         const searchTerm = req.query.q;
         if (!searchTerm || searchTerm.trim().length === 0) {
@@ -135,7 +143,12 @@ router.get('/search', async (req, res) => {
             });
             return;
         }
-        const images = await DatabaseService_1.DatabaseService.searchImages(searchTerm.trim());
+        // Get current user or default admin for filtering
+        let currentUser = req.user;
+        if (!currentUser) {
+            currentUser = await UserService_1.UserService.getDefaultAdminUser();
+        }
+        const images = await DatabaseService_1.DatabaseService.searchImages(searchTerm.trim(), currentUser.id);
         res.json({
             success: true,
             images,
@@ -152,11 +165,16 @@ router.get('/search', async (req, res) => {
     }
 });
 // Get all images with pagination
-router.get('/', async (req, res) => {
+router.get('/', auth_1.optionalAuth, async (req, res) => {
     try {
         const page = req.query.page ? parseInt(req.query.page) : undefined;
         const limit = req.query.limit ? parseInt(req.query.limit) : undefined;
-        const result = await DatabaseService_1.DatabaseService.getAllImages(page, limit);
+        // Get current user or default admin for filtering
+        let currentUser = req.user;
+        if (!currentUser) {
+            currentUser = await UserService_1.UserService.getDefaultAdminUser();
+        }
+        const result = await DatabaseService_1.DatabaseService.getAllImages(page, limit, currentUser.id);
         res.json({
             success: true,
             ...result
@@ -405,10 +423,15 @@ router.post('/:id/analyze', async (req, res) => {
     }
 });
 // Search images by keyword
-router.get('/search/keyword/:keyword', async (req, res) => {
+router.get('/search/keyword/:keyword', auth_1.optionalAuth, async (req, res) => {
     try {
         const keyword = decodeURIComponent(req.params.keyword);
-        const images = await DatabaseService_1.DatabaseService.searchImagesByKeyword(keyword);
+        // Get current user or default admin for filtering
+        let currentUser = req.user;
+        if (!currentUser) {
+            currentUser = await UserService_1.UserService.getDefaultAdminUser();
+        }
+        const images = await DatabaseService_1.DatabaseService.searchImagesByKeyword(keyword, currentUser.id);
         res.json({
             success: true,
             images,

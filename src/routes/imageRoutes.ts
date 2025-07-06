@@ -8,6 +8,8 @@ import { ImageProcessingService } from '../services/ImageProcessingService';
 import { GeminiService } from '../services/GeminiService';
 import { BatchProcessingService } from '../services/BatchProcessingService';
 import { ImageMetadata, UploadResponse, AnalysisResponse } from '../types';
+import { requireAuth, optionalAuth } from '../middleware/auth';
+import { UserService } from '../services/UserService';
 
 const router = express.Router();
 
@@ -37,11 +39,17 @@ const upload = multer({
 });
 
 // Upload and process image
-router.post('/upload', upload.single('image'), async (req, res): Promise<void> => {
+router.post('/upload', upload.single('image'), requireAuth, async (req, res): Promise<void> => {
   try {
     if (!req.file) {
       res.status(400).json({ success: false, error: 'No file uploaded' });
       return;
+    }
+
+    // Get current user or default admin
+    let currentUser = req.user as any;
+    if (!currentUser) {
+      currentUser = await UserService.getDefaultAdminUser();
     }
 
     // Check for duplicate files
@@ -101,7 +109,8 @@ router.post('/upload', upload.single('image'), async (req, res): Promise<void> =
       width: processedResult.width,
       height: processedResult.height,
       uploadedAt: new Date().toISOString(),
-      status: 'uploaded'
+      status: 'uploaded',
+      userId: currentUser.id!
     };
 
     // Save to database
@@ -143,7 +152,7 @@ router.post('/upload', upload.single('image'), async (req, res): Promise<void> =
 });
 
 // General search across all metadata (must come before /:id route)
-router.get('/search', async (req, res): Promise<void> => {
+router.get('/search', optionalAuth, async (req, res): Promise<void> => {
   try {
     const searchTerm = req.query.q as string;
 
@@ -155,7 +164,13 @@ router.get('/search', async (req, res): Promise<void> => {
       return;
     }
 
-    const images = await DatabaseService.searchImages(searchTerm.trim());
+    // Get current user or default admin for filtering
+    let currentUser = req.user as any;
+    if (!currentUser) {
+      currentUser = await UserService.getDefaultAdminUser();
+    }
+
+    const images = await DatabaseService.searchImages(searchTerm.trim(), currentUser.id);
 
     res.json({
       success: true,
@@ -173,12 +188,18 @@ router.get('/search', async (req, res): Promise<void> => {
 });
 
 // Get all images with pagination
-router.get('/', async (req, res): Promise<void> => {
+router.get('/', optionalAuth, async (req, res): Promise<void> => {
   try {
     const page = req.query.page ? parseInt(req.query.page as string) : undefined;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
 
-    const result = await DatabaseService.getAllImages(page, limit);
+    // Get current user or default admin for filtering
+    let currentUser = req.user as any;
+    if (!currentUser) {
+      currentUser = await UserService.getDefaultAdminUser();
+    }
+
+    const result = await DatabaseService.getAllImages(page, limit, currentUser.id);
     res.json({
       success: true,
       ...result
@@ -449,10 +470,17 @@ router.post('/:id/analyze', async (req, res): Promise<void> => {
 });
 
 // Search images by keyword
-router.get('/search/keyword/:keyword', async (req, res): Promise<void> => {
+router.get('/search/keyword/:keyword', optionalAuth, async (req, res): Promise<void> => {
   try {
     const keyword = decodeURIComponent(req.params.keyword);
-    const images = await DatabaseService.searchImagesByKeyword(keyword);
+
+    // Get current user or default admin for filtering
+    let currentUser = req.user as any;
+    if (!currentUser) {
+      currentUser = await UserService.getDefaultAdminUser();
+    }
+
+    const images = await DatabaseService.searchImagesByKeyword(keyword, currentUser.id);
 
     res.json({
       success: true,

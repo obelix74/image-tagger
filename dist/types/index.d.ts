@@ -1,3 +1,13 @@
+export interface User {
+    id?: number;
+    username: string;
+    email?: string;
+    name: string;
+    passwordHash: string;
+    isAdmin: boolean;
+    createdAt: string;
+    lastLoginAt?: string;
+}
 export interface ImageMetadata {
     id?: number;
     filename: string;
@@ -13,6 +23,7 @@ export interface ImageMetadata {
     processedAt?: string;
     status: 'uploaded' | 'processing' | 'completed' | 'error';
     errorMessage?: string;
+    userId: number;
 }
 export interface ImageExifMetadata {
     id?: number;
@@ -88,5 +99,29 @@ export interface ImageProcessingOptions {
     thumbnailSize: number;
     geminiImageSize: number;
     quality: number;
+}
+export interface UserResponse {
+    id: number;
+    username: string;
+    email?: string;
+    name: string;
+    isAdmin: boolean;
+    createdAt: string;
+    lastLoginAt?: string;
+}
+export interface AuthResponse {
+    success: boolean;
+    user?: UserResponse;
+    error?: string;
+}
+export interface LoginRequest {
+    username: string;
+    password: string;
+}
+export interface RegisterRequest {
+    username: string;
+    password: string;
+    name: string;
+    email?: string;
 }
 //# sourceMappingURL=index.d.ts.map
