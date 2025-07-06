@@ -127,28 +127,7 @@
   cursor: not-allowed;
 }
 
-.default-credentials {
-  background: #f8f9fa;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #e1e5e9;
-  text-align: left;
-}
 
-.default-credentials p {
-  margin: 4px 0;
-  font-size: 14px;
-  color: #666;
-}
-
-.default-credentials code {
-  background: #e1e5e9;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  color: #333;
-}
 
 .login-footer {
   border-top: 1px solid #e1e5e9;

@@ -168,14 +168,6 @@ const Login: React.FC = () => {
           >
             {isRegistering ? 'Already have an account? Sign in' : 'Need an account? Register'}
           </button>
-
-          {!isRegistering && (
-            <div className="default-credentials">
-              <p><strong>Default Admin Account:</strong></p>
-              <p>Username: <code>admin</code></p>
-              <p>Password: <code>admin123</code></p>
-            </div>
-          )}
         </div>
       </div>
     </div>
