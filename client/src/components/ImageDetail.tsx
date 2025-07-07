@@ -410,11 +410,6 @@ const ImageDetail: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <div className="keywords-text">
-                  <p className="comma-separated">
-                    <strong>Comma-separated:</strong> {analysis.keywords.join(', ')}
-                  </p>
-                </div>
               </div>
 
               {analysis.confidence !== undefined && analysis.confidence !== null && (
