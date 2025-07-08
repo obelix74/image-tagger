@@ -561,6 +561,40 @@ async function processImageInBackground(imageId: number, imagePath: string, useF
   }
 }
 
+// Serve thumbnail image
+router.get('/:id/thumbnail', async (req, res): Promise<void> => {
+  try {
+    const imageId = parseInt(req.params.id);
+    const image = await DatabaseService.getImage(imageId);
+
+    if (!image) {
+      res.status(404).json({
+        success: false,
+        error: 'Image not found'
+      });
+      return;
+    }
+
+    // Always serve thumbnail for this endpoint
+    try {
+      const thumbnailPath = path.resolve(image.thumbnailPath);
+      await fs.access(thumbnailPath);
+      res.sendFile(thumbnailPath);
+    } catch (error) {
+      res.status(404).json({
+        success: false,
+        error: 'Thumbnail not found'
+      });
+    }
+  } catch (error) {
+    console.error('Thumbnail serve error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to serve thumbnail'
+    });
+  }
+});
+
 // Serve original image if it exists, otherwise serve thumbnail
 router.get('/:id/display', async (req, res): Promise<void> => {
   try {

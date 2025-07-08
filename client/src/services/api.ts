@@ -247,9 +247,14 @@ export const imageApi = {
     return response.data;
   },
 
-  // Get thumbnail URL
+  // Get thumbnail URL by path (for gallery)
   getThumbnailUrl: (thumbnailPath: string): string => {
     return `${API_BASE_URL.replace('/api', '')}/thumbnails/${thumbnailPath.split('/').pop()}`;
+  },
+
+  // Get thumbnail URL by image ID (for detail page)
+  getThumbnailUrlById: (imageId: number): string => {
+    return `${API_BASE_URL}/images/${imageId}/thumbnail`;
   },
 
   // Get full image URL
