@@ -133,7 +133,8 @@ router.post('/upload', upload.single('image'), requireAuth, async (req, res): Pr
     }
 
     // Start background processing
-    processImageInBackground(imageId, processedResult.processedPath);
+    const customPrompt = req.body.customPrompt || undefined;
+    processImageInBackground(imageId, processedResult.processedPath, false, customPrompt, processedResult.metadata);
 
     const response: UploadResponse = {
       success: true,
@@ -353,6 +354,58 @@ router.delete('/batch/:batchId', async (req, res): Promise<void> => {
   }
 });
 
+// Pause batch processing
+router.put('/batch/:batchId/pause', async (req, res): Promise<void> => {
+  try {
+    const { batchId } = req.params;
+    const success = await BatchProcessingService.pauseBatch(batchId);
+    
+    if (success) {
+      res.json({
+        success: true,
+        message: 'Batch pause requested successfully'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: 'Batch not found or cannot be paused'
+      });
+    }
+  } catch (error) {
+    console.error('Pause batch error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to pause batch'
+    });
+  }
+});
+
+// Resume batch processing
+router.put('/batch/:batchId/resume', async (req, res): Promise<void> => {
+  try {
+    const { batchId } = req.params;
+    const success = await BatchProcessingService.resumeBatch(batchId);
+    
+    if (success) {
+      res.json({
+        success: true,
+        message: 'Batch resumed successfully'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: 'Batch not found or cannot be resumed'
+      });
+    }
+  } catch (error) {
+    console.error('Resume batch error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resume batch'
+    });
+  }
+});
+
 // Get specific image
 router.get('/:id', async (req, res): Promise<void> => {
   try {
@@ -515,7 +568,7 @@ router.get('/test/gemini', async (req, res): Promise<void> => {
 });
 
 // Background processing function
-async function processImageInBackground(imageId: number, imagePath: string, useFallback: boolean = false): Promise<void> {
+async function processImageInBackground(imageId: number, imagePath: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<void> {
   try {
     await DatabaseService.updateImageStatus(imageId, 'processing');
 
@@ -525,8 +578,8 @@ async function processImageInBackground(imageId: number, imagePath: string, useF
     const geminiImageSize = parseInt(process.env.GEMINI_IMAGE_SIZE || '1024');
     const resizedBuffer = await ImageProcessingService.resizeForGemini(imagePath, geminiImageSize);
 
-    // Analyze with Gemini
-    const analysis = await GeminiService.analyzeImage(resizedBuffer, 'image/jpeg', useFallback);
+    // Analyze with Gemini (include metadata for enhanced context)
+    const analysis = await GeminiService.analyzeImage(resizedBuffer, 'image/jpeg', useFallback, customPrompt, metadata);
 
     // Save analysis to database
     const analysisData = {

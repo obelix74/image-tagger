@@ -38,6 +38,7 @@ export interface ImageExifMetadata {
   make?: string;
   model?: string;
   software?: string;
+  lens?: string;
   // Photo Settings
   iso?: number;
   fNumber?: number;
@@ -76,6 +77,11 @@ export interface GeminiAnalysis {
   keywords: string[];
   confidence?: number;
   analysisDate: string;
+  // Extended metadata fields from Lightroom version
+  title?: string;
+  headline?: string;
+  instructions?: string;
+  location?: string;
 }
 
 export interface ProcessingStatus {
@@ -143,4 +149,38 @@ export interface RegisterRequest {
   password: string;
   name: string;
   email?: string;
+}
+
+export interface Collection {
+  id?: number;
+  name: string;
+  description?: string;
+  type: 'manual' | 'smart' | 'keyword' | 'location' | 'camera' | 'date';
+  rules?: CollectionRule[];
+  imageCount?: number;
+  createdAt: string;
+  updatedAt: string;
+  userId: number;
+}
+
+export interface CollectionRule {
+  field: string;
+  operator: 'equals' | 'contains' | 'starts_with' | 'greater_than' | 'less_than' | 'between' | 'in_range';
+  value: string | number;
+  value2?: string | number; // For range operations
+}
+
+export interface CollectionImage {
+  id?: number;
+  collectionId: number;
+  imageId: number;
+  addedAt: string;
+}
+
+export interface CollectionResponse {
+  success: boolean;
+  collection?: Collection;
+  collections?: Collection[];
+  images?: ImageMetadata[];
+  error?: string;
 }

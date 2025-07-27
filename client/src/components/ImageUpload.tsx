@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { imageApi } from '../services/api';
+import PromptConfiguration from './PromptConfiguration';
 import './ImageUpload.css';
 
 const ImageUpload: React.FC = () => {
@@ -9,6 +10,7 @@ const ImageUpload: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [customPrompt, setCustomPrompt] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -73,7 +75,7 @@ const ImageUpload: React.FC = () => {
         });
       }, 200);
 
-      const response = await imageApi.uploadImage(file);
+      const response = await imageApi.uploadImage(file, customPrompt || undefined);
       
       clearInterval(progressInterval);
       setUploadProgress(100);
@@ -182,6 +184,11 @@ const ImageUpload: React.FC = () => {
           {success}
         </div>
       )}
+
+      <PromptConfiguration 
+        onPromptChange={setCustomPrompt}
+        currentPrompt={customPrompt}
+      />
 
       <div className="upload-info">
         <h3>What happens next?</h3>

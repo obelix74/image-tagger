@@ -33,6 +33,11 @@ export interface GeminiAnalysis {
   keywords: string[];
   confidence?: number;
   analysisDate: string;
+  // Extended metadata fields from Lightroom version
+  title?: string;
+  headline?: string;
+  instructions?: string;
+  location?: string;
 }
 
 export interface UploadResponse {
@@ -80,6 +85,11 @@ export interface BatchProcessingOptions {
   quality?: number;
   skipDuplicates?: boolean;
   parallelConnections?: number;
+  maxRetries?: number;
+  retryDelay?: number;
+  enableRateLimit?: boolean;
+  maxConcurrentAnalysis?: number;
+  customPrompt?: string;
 }
 
 export interface ImageExifMetadata {
@@ -93,6 +103,7 @@ export interface ImageExifMetadata {
   make?: string;
   model?: string;
   software?: string;
+  lens?: string;
   // Photo Settings
   iso?: number;
   fNumber?: number;
@@ -130,15 +141,29 @@ export interface BatchProcessingResult {
   successfulFiles: number;
   duplicateFiles: number;
   errorFiles: number;
+  retryingFiles: number;
+  pendingAnalysis: number;
+  completedAnalysis: number;
+  failedAnalysis: number;
   errors: Array<{
     file: string;
     error: string;
-    type: 'duplicate' | 'processing' | 'unsupported';
+    type: 'duplicate' | 'processing' | 'unsupported' | 'analysis' | 'retry_exhausted';
+    retryCount?: number;
   }>;
   processedImages: ImageMetadata[];
-  status: 'processing' | 'completed' | 'error';
+  status: 'processing' | 'completed' | 'error' | 'paused';
   startTime: string;
   endTime?: string;
+  estimatedTimeRemaining?: string;
+  processingRate?: number;
+  memoryUsage?: {
+    used: number;
+    total: number;
+    percentage: number;
+  };
+  currentPhase: 'discovery' | 'uploading' | 'analysis' | 'finalizing';
+  pauseRequested?: boolean;
 }
 
 export interface BatchJob {
@@ -158,11 +183,41 @@ export interface BatchResponse {
   error?: string;
 }
 
+export interface Collection {
+  id?: number;
+  name: string;
+  description?: string;
+  type: 'manual' | 'smart' | 'keyword' | 'location' | 'camera' | 'date';
+  rules?: CollectionRule[];
+  imageCount?: number;
+  createdAt: string;
+  updatedAt: string;
+  userId: number;
+}
+
+export interface CollectionRule {
+  field: string;
+  operator: 'equals' | 'contains' | 'starts_with' | 'greater_than' | 'less_than' | 'between' | 'in_range';
+  value: string | number;
+  value2?: string | number; // For range operations
+}
+
+export interface CollectionResponse {
+  success: boolean;
+  collection?: Collection;
+  collections?: Collection[];
+  images?: ImageMetadata[];
+  error?: string;
+}
+
 export const imageApi = {
   // Upload an image
-  uploadImage: async (file: File): Promise<UploadResponse> => {
+  uploadImage: async (file: File, customPrompt?: string): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('image', file);
+    if (customPrompt) {
+      formData.append('customPrompt', customPrompt);
+    }
 
     const response = await api.post('/images/upload', formData, {
       headers: {
@@ -235,6 +290,16 @@ export const imageApi = {
     return response.data;
   },
 
+  pauseBatch: async (batchId: string): Promise<BatchResponse> => {
+    const response = await api.put(`/images/batch/${batchId}/pause`);
+    return response.data;
+  },
+
+  resumeBatch: async (batchId: string): Promise<BatchResponse> => {
+    const response = await api.put(`/images/batch/${batchId}/resume`);
+    return response.data;
+  },
+
   // Get image metadata
   getImageMetadata: async (imageId: number): Promise<{ success: boolean; metadata?: ImageExifMetadata; error?: string }> => {
     const response = await api.get(`/images/${imageId}/metadata`);
@@ -265,6 +330,67 @@ export const imageApi = {
   // Get display URL (original or thumbnail)
   getDisplayUrl: (imageId: number): string => {
     return `${API_BASE_URL}/images/${imageId}/display`;
+  },
+
+  // Collections API
+  // Get all collections
+  getAllCollections: async (): Promise<CollectionResponse> => {
+    const response = await api.get('/collections');
+    return response.data;
+  },
+
+  // Create a new collection
+  createCollection: async (collection: Omit<Collection, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<CollectionResponse> => {
+    const response = await api.post('/collections', collection);
+    return response.data;
+  },
+
+  // Get a specific collection
+  getCollection: async (id: number): Promise<CollectionResponse> => {
+    const response = await api.get(`/collections/${id}`);
+    return response.data;
+  },
+
+  // Update a collection
+  updateCollection: async (id: number, updates: Partial<Collection>): Promise<CollectionResponse> => {
+    const response = await api.put(`/collections/${id}`, updates);
+    return response.data;
+  },
+
+  // Delete a collection
+  deleteCollection: async (id: number): Promise<{ success: boolean; message?: string; error?: string }> => {
+    const response = await api.delete(`/collections/${id}`);
+    return response.data;
+  },
+
+  // Get images in a collection
+  getCollectionImages: async (id: number): Promise<CollectionResponse> => {
+    const response = await api.get(`/collections/${id}/images`);
+    return response.data;
+  },
+
+  // Add image to collection
+  addImageToCollection: async (collectionId: number, imageId: number): Promise<{ success: boolean; message?: string; error?: string }> => {
+    const response = await api.post(`/collections/${collectionId}/images/${imageId}`);
+    return response.data;
+  },
+
+  // Remove image from collection
+  removeImageFromCollection: async (collectionId: number, imageId: number): Promise<{ success: boolean; message?: string; error?: string }> => {
+    const response = await api.delete(`/collections/${collectionId}/images/${imageId}`);
+    return response.data;
+  },
+
+  // Setup default collections
+  setupDefaultCollections: async (): Promise<{ success: boolean; message?: string; error?: string }> => {
+    const response = await api.post('/collections/setup-defaults');
+    return response.data;
+  },
+
+  // Auto-organize images into collections
+  autoOrganizeImages: async (): Promise<{ success: boolean; message?: string; error?: string }> => {
+    const response = await api.post('/collections/auto-organize');
+    return response.data;
   },
 };
 

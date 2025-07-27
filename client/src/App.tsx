@@ -1,6 +1,7 @@
 
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import Header from './components/Header';
 import ImageUpload from './components/ImageUpload';
 import ImageGallery from './components/ImageGallery';
@@ -8,6 +9,8 @@ import ImageDetail from './components/ImageDetail';
 import SearchResults from './components/SearchResults';
 import GeneralSearchResults from './components/GeneralSearchResults';
 import BatchProcessing from './components/BatchProcessing';
+import Collections from './components/Collections';
+import CollectionDetail from './components/CollectionDetail';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './components/Login';
 import './App.css';
@@ -15,7 +18,8 @@ import './App.css';
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <LanguageProvider>
+        <Router>
         <div className="App">
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -67,9 +71,26 @@ function App() {
                 </main>
               </ProtectedRoute>
             } />
+            <Route path="/collections" element={
+              <ProtectedRoute>
+                <Header />
+                <main className="main-content">
+                  <Collections />
+                </main>
+              </ProtectedRoute>
+            } />
+            <Route path="/collections/:id" element={
+              <ProtectedRoute>
+                <Header />
+                <main className="main-content">
+                  <CollectionDetail />
+                </main>
+              </ProtectedRoute>
+            } />
           </Routes>
         </div>
-      </Router>
+        </Router>
+      </LanguageProvider>
     </AuthProvider>
   );
 }

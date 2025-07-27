@@ -11,6 +11,7 @@ const express_session_1 = __importDefault(require("express-session"));
 const DatabaseService_1 = require("./services/DatabaseService");
 const imageRoutes_1 = require("./routes/imageRoutes");
 const authRoutes_1 = require("./routes/authRoutes");
+const collectionRoutes_1 = require("./routes/collectionRoutes");
 // Load environment variables
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -50,6 +51,7 @@ const initializeDatabase = async () => {
 // Routes
 app.use('/api/auth', authRoutes_1.authRoutes);
 app.use('/api/images', imageRoutes_1.imageRoutes);
+app.use('/api/collections', collectionRoutes_1.collectionRoutes);
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });

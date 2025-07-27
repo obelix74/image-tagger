@@ -259,6 +259,7 @@ export class ImageProcessingService {
         make: exifData.Make,
         model: exifData.Model,
         software: exifData.Software,
+        lens: exifData.Lens || exifData.LensModel || exifData.LensInfo,
         // Photo Settings
         iso: exifData.ISO,
         fNumber: exifData.FNumber,
@@ -313,11 +314,11 @@ export class ImageProcessingService {
 
       // Include only essential fields to limit size
       const allowedFields = [
-        'Make', 'Model', 'Software', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized',
+        'Make', 'Model', 'Software', 'Lens', 'LensModel', 'LensInfo', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized',
         'ISO', 'FNumber', 'ExposureTime', 'FocalLength', 'Flash', 'WhiteBalance',
         'ColorSpace', 'Orientation', 'XResolution', 'YResolution', 'ResolutionUnit',
         'GPSLatitude', 'GPSLongitude', 'GPSAltitude', 'GPSLatitudeRef', 'GPSLongitudeRef',
-        'ImageWidth', 'ImageHeight', 'BitsPerSample', 'Compression'
+        'ImageWidth', 'ImageHeight', 'BitsPerSample', 'Compression', 'ExposureMode', 'MeteringMode'
       ];
 
       for (const field of allowedFields) {

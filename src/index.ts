@@ -6,6 +6,7 @@ import session from 'express-session';
 import { DatabaseService } from './services/DatabaseService';
 import { imageRoutes } from './routes/imageRoutes';
 import { authRoutes } from './routes/authRoutes';
+import { collectionRoutes } from './routes/collectionRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -51,6 +52,7 @@ const initializeDatabase = async () => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/images', imageRoutes);
+app.use('/api/collections', collectionRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

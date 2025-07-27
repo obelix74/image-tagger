@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs/promises';
 import sharp from 'sharp';
 import { GeminiAnalysis } from '../types';
+import { PromptPresets } from './PromptPresets';
 
 export class GeminiService {
   private static genAI: GoogleGenerativeAI;
@@ -33,7 +34,7 @@ export class GeminiService {
     this.lastRequestTime = Date.now();
   }
 
-  static async analyzeImage(imageBuffer: Buffer, mimeType: string, useFallback: boolean = false): Promise<Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'>> {
+  static async analyzeImage(imageBuffer: Buffer, mimeType: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'>> {
     if (!this.model) {
       this.initialize();
     }
@@ -44,24 +45,15 @@ export class GeminiService {
       return this.getFallbackAnalysis();
     }
 
-    const prompt = `
-Analyze this image and provide the following information in JSON format:
-
-{
-  "description": "A detailed description of the image (2-3 sentences)",
-  "caption": "A concise, engaging caption suitable for social media (1 sentence, max 100 characters)",
-  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
-  "confidence": 0.95
-}
-
-Requirements:
-- Description: Describe what you see in detail, including objects, people, setting, mood, colors, and composition
-- Caption: Create an engaging, shareable caption that captures the essence of the image
-- Keywords: Provide 5-10 SEO-optimized keywords relevant to the image content, style, and potential use cases
-- Confidence: Your confidence level in the analysis (0.0 to 1.0)
-
-Please ensure the JSON is valid and properly formatted.
-    `;
+    let prompt = customPrompt || PromptPresets.getDefaultPrompt();
+    
+    // Enhance prompt with EXIF metadata context if available
+    if (metadata) {
+      const metadataContext = this.buildMetadataContext(metadata);
+      if (metadataContext) {
+        prompt = `${metadataContext}\n\n${prompt}`;
+      }
+    }
 
     // Prepare image for Gemini API with size limits
     const processedImageBuffer = await this.prepareImageForGemini(imageBuffer);
@@ -95,16 +87,21 @@ Please ensure the JSON is valid and properly formatted.
         const analysisData = JSON.parse(jsonMatch[0]);
 
         // Validate the response structure
-        if (!analysisData.description || !analysisData.caption || !Array.isArray(analysisData.keywords)) {
+        if (!analysisData.caption || !Array.isArray(analysisData.keywords)) {
           throw new Error('Invalid response structure from Gemini API');
         }
 
         console.log(`Gemini API request successful on attempt ${attempt}`);
         return {
-          description: analysisData.description,
+          description: analysisData.headline || analysisData.description || analysisData.caption,
           caption: analysisData.caption,
           keywords: analysisData.keywords,
-          confidence: analysisData.confidence || 0.8
+          confidence: analysisData.confidence || 0.8,
+          // New fields from extended analysis
+          title: analysisData.title,
+          headline: analysisData.headline,
+          instructions: analysisData.instructions,
+          location: analysisData.location
         };
 
       } catch (error) {
@@ -128,11 +125,11 @@ Please ensure the JSON is valid and properly formatted.
     throw new Error(`Gemini AI analysis failed: ${lastError?.message || 'Unknown error'}`);
   }
 
-  static async analyzeImageFromPath(imagePath: string, useFallback: boolean = false): Promise<Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'>> {
+  static async analyzeImageFromPath(imagePath: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'>> {
     const imageBuffer = await fs.readFile(imagePath);
     const mimeType = this.getMimeTypeFromPath(imagePath);
 
-    return this.analyzeImage(imageBuffer, mimeType, useFallback);
+    return this.analyzeImage(imageBuffer, mimeType, useFallback, customPrompt, metadata);
   }
 
   private static getMimeTypeFromPath(imagePath: string): string {
@@ -283,5 +280,100 @@ Please ensure the JSON is valid and properly formatted.
         throw new Error('Unable to prepare image for Gemini API');
       }
     }
+  }
+
+  /**
+   * Build metadata context string for enhanced AI analysis
+   */
+  private static buildMetadataContext(metadata: any): string | null {
+    if (!metadata) return null;
+
+    const contextParts: string[] = [];
+
+    // Add camera and lens information
+    if (metadata.make || metadata.model || metadata.lens) {
+      const camera = [metadata.make, metadata.model].filter(Boolean).join(' ');
+      const lens = metadata.lens;
+      
+      if (camera && lens) {
+        contextParts.push(`Camera: ${camera} with ${lens}`);
+      } else if (camera) {
+        contextParts.push(`Camera: ${camera}`);
+      } else if (lens) {
+        contextParts.push(`Lens: ${lens}`);
+      }
+    }
+
+    // Add shooting settings for better context
+    const settings: string[] = [];
+    if (metadata.iso) settings.push(`ISO ${metadata.iso}`);
+    if (metadata.fNumber) settings.push(`f/${metadata.fNumber}`);
+    if (metadata.exposureTime) settings.push(`${metadata.exposureTime}s`);
+    if (metadata.focalLength) settings.push(`${metadata.focalLength}mm`);
+    
+    if (settings.length > 0) {
+      contextParts.push(`Settings: ${settings.join(', ')}`);
+    }
+
+    // Add location context if available
+    if (metadata.gps && metadata.gps.latitude && metadata.gps.longitude) {
+      contextParts.push(`GPS: ${metadata.gps.latitude}, ${metadata.gps.longitude}`);
+    } else if (metadata.latitude && metadata.longitude) {
+      contextParts.push(`GPS: ${metadata.latitude}, ${metadata.longitude}`);
+    }
+
+    // Add existing IPTC metadata context
+    if (metadata.city || metadata.state || metadata.country) {
+      const location = [metadata.city, metadata.state, metadata.country].filter(Boolean).join(', ');
+      contextParts.push(`Location: ${location}`);
+    }
+
+    if (metadata.creator || metadata.copyright) {
+      const rights = [metadata.creator, metadata.copyright].filter(Boolean).join(' - ');
+      contextParts.push(`Rights: ${rights}`);
+    }
+
+    // Add date context if available
+    if (metadata.dateTimeOriginal) {
+      try {
+        const date = new Date(metadata.dateTimeOriginal);
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const season = this.getSeason(month);
+        const timeOfDay = this.getTimeOfDay(date.getHours());
+        contextParts.push(`Captured: ${year} ${season}, ${timeOfDay}`);
+      } catch (e) {
+        // Ignore date parsing errors
+      }
+    }
+
+    if (contextParts.length === 0) return null;
+
+    return `METADATA CONTEXT for AI analysis:
+${contextParts.join('\n')}
+
+Please use this technical metadata to enhance your analysis with relevant context about the camera settings, location, and shooting conditions.`;
+  }
+
+  /**
+   * Helper to determine season from month
+   */
+  private static getSeason(month: number): string {
+    if (month >= 3 && month <= 5) return 'Spring';
+    if (month >= 6 && month <= 8) return 'Summer';
+    if (month >= 9 && month <= 11) return 'Fall';
+    return 'Winter';
+  }
+
+  /**
+   * Helper to determine time of day from hour
+   */
+  private static getTimeOfDay(hour: number): string {
+    if (hour >= 5 && hour < 8) return 'early morning';
+    if (hour >= 8 && hour < 12) return 'morning';
+    if (hour >= 12 && hour < 17) return 'afternoon';
+    if (hour >= 17 && hour < 20) return 'evening';
+    if (hour >= 20 && hour < 22) return 'dusk';
+    return 'night';
   }
 }

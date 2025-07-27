@@ -117,7 +117,8 @@ router.post('/upload', upload.single('image'), auth_1.requireAuth, async (req, r
             }
         }
         // Start background processing
-        processImageInBackground(imageId, processedResult.processedPath);
+        const customPrompt = req.body.customPrompt || undefined;
+        processImageInBackground(imageId, processedResult.processedPath, false, customPrompt, processedResult.metadata);
         const response = {
             success: true,
             image: savedImage
@@ -319,6 +320,58 @@ router.delete('/batch/:batchId', async (req, res) => {
         });
     }
 });
+// Pause batch processing
+router.put('/batch/:batchId/pause', async (req, res) => {
+    try {
+        const { batchId } = req.params;
+        const success = await BatchProcessingService_1.BatchProcessingService.pauseBatch(batchId);
+        if (success) {
+            res.json({
+                success: true,
+                message: 'Batch pause requested successfully'
+            });
+        }
+        else {
+            res.status(400).json({
+                success: false,
+                error: 'Batch not found or cannot be paused'
+            });
+        }
+    }
+    catch (error) {
+        console.error('Pause batch error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to pause batch'
+        });
+    }
+});
+// Resume batch processing
+router.put('/batch/:batchId/resume', async (req, res) => {
+    try {
+        const { batchId } = req.params;
+        const success = await BatchProcessingService_1.BatchProcessingService.resumeBatch(batchId);
+        if (success) {
+            res.json({
+                success: true,
+                message: 'Batch resumed successfully'
+            });
+        }
+        else {
+            res.status(400).json({
+                success: false,
+                error: 'Batch not found or cannot be resumed'
+            });
+        }
+    }
+    catch (error) {
+        console.error('Resume batch error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to resume batch'
+        });
+    }
+});
 // Get specific image
 router.get('/:id', async (req, res) => {
     try {
@@ -465,15 +518,15 @@ router.get('/test/gemini', async (req, res) => {
     }
 });
 // Background processing function
-async function processImageInBackground(imageId, imagePath, useFallback = false) {
+async function processImageInBackground(imageId, imagePath, useFallback = false, customPrompt, metadata) {
     try {
         await DatabaseService_1.DatabaseService.updateImageStatus(imageId, 'processing');
         console.log(`Starting AI analysis for image ${imageId}${useFallback ? ' (fallback mode)' : ''}`);
         // Resize image for Gemini if needed
         const geminiImageSize = parseInt(process.env.GEMINI_IMAGE_SIZE || '1024');
         const resizedBuffer = await ImageProcessingService_1.ImageProcessingService.resizeForGemini(imagePath, geminiImageSize);
-        // Analyze with Gemini
-        const analysis = await GeminiService_1.GeminiService.analyzeImage(resizedBuffer, 'image/jpeg', useFallback);
+        // Analyze with Gemini (include metadata for enhanced context)
+        const analysis = await GeminiService_1.GeminiService.analyzeImage(resizedBuffer, 'image/jpeg', useFallback, customPrompt, metadata);
         // Save analysis to database
         const analysisData = {
             ...analysis,

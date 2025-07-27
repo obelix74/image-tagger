@@ -50,6 +50,13 @@
   font-weight: 600;
 }
 
+/* Header Actions */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 /* User Menu Styles */
 .user-menu {
   position: relative;
@@ -179,8 +186,9 @@
     gap: 1rem;
   }
 
-  .user-menu {
+  .header-actions {
     order: -1;
+    gap: 0.75rem;
   }
 
   .user-name {

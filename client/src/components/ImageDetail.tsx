@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { imageApi, type ImageMetadata, type GeminiAnalysis, type ImageExifMetadata } from '../services/api';
+import { imageApi, type ImageMetadata, type GeminiAnalysis, type ImageExifMetadata, type Collection } from '../services/api';
 import './ImageDetail.css';
 
 const ImageDetail: React.FC = () => {
@@ -12,6 +12,8 @@ const ImageDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [showCollections, setShowCollections] = useState(false);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -124,6 +126,43 @@ const ImageDetail: React.FC = () => {
     navigate(`/search/${encodeURIComponent(keyword)}`);
   };
 
+  const loadCollections = async () => {
+    try {
+      const response = await imageApi.getAllCollections();
+      if (response.success && response.collections) {
+        // Filter to manual collections only for adding images
+        const manualCollections = response.collections.filter(c => c.type === 'manual');
+        setCollections(manualCollections);
+      }
+    } catch (error) {
+      console.warn('Failed to load collections:', error);
+    }
+  };
+
+  const handleAddToCollection = async (collectionId: number) => {
+    if (!image) return;
+    
+    try {
+      const response = await imageApi.addImageToCollection(collectionId, image.id!);
+      if (response.success) {
+        setShowCollections(false);
+        // Optional: Show success message
+        alert('Image added to collection successfully!');
+      } else {
+        setError(response.error || 'Failed to add image to collection');
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to add image to collection');
+    }
+  };
+
+  const handleShowCollections = async () => {
+    if (collections.length === 0) {
+      await loadCollections();
+    }
+    setShowCollections(true);
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -183,7 +222,16 @@ const ImageDetail: React.FC = () => {
         <Link to="/" className="back-link">
           ← Back to Gallery
         </Link>
-        <h1>{image.originalName}</h1>
+        <div className="header-title">
+          <h1>{image.originalName}</h1>
+          <button 
+            onClick={handleShowCollections}
+            className="add-to-collection-button"
+            title="Add to Collection"
+          >
+            📁 Add to Collection
+          </button>
+        </div>
       </div>
 
       <div className="detail-content">
@@ -279,6 +327,7 @@ const ImageDetail: React.FC = () => {
                   <h4>📷 Camera</h4>
                   {metadata.make && <p><strong>Make:</strong> {metadata.make}</p>}
                   {metadata.model && <p><strong>Model:</strong> {metadata.model}</p>}
+                  {metadata.lens && <p><strong>Lens:</strong> {metadata.lens}</p>}
                   {metadata.software && <p><strong>Software:</strong> {metadata.software}</p>}
                 </div>
               )}
@@ -412,6 +461,70 @@ const ImageDetail: React.FC = () => {
                 </div>
               </div>
 
+              {analysis.title && (
+                <div className="analysis-item">
+                  <div className="analysis-label">
+                    <h4>Title</h4>
+                    <button
+                      onClick={() => copyToClipboard(analysis.title!)}
+                      className="copy-button"
+                      title="Copy to clipboard"
+                    >
+                      📋
+                    </button>
+                  </div>
+                  <p className="title">{analysis.title}</p>
+                </div>
+              )}
+
+              {analysis.headline && (
+                <div className="analysis-item">
+                  <div className="analysis-label">
+                    <h4>Headline</h4>
+                    <button
+                      onClick={() => copyToClipboard(analysis.headline!)}
+                      className="copy-button"
+                      title="Copy to clipboard"
+                    >
+                      📋
+                    </button>
+                  </div>
+                  <p className="headline">{analysis.headline}</p>
+                </div>
+              )}
+
+              {analysis.instructions && (
+                <div className="analysis-item">
+                  <div className="analysis-label">
+                    <h4>Instructions</h4>
+                    <button
+                      onClick={() => copyToClipboard(analysis.instructions!)}
+                      className="copy-button"
+                      title="Copy to clipboard"
+                    >
+                      📋
+                    </button>
+                  </div>
+                  <p className="instructions">{analysis.instructions}</p>
+                </div>
+              )}
+
+              {analysis.location && (
+                <div className="analysis-item">
+                  <div className="analysis-label">
+                    <h4>Location</h4>
+                    <button
+                      onClick={() => copyToClipboard(analysis.location!)}
+                      className="copy-button"
+                      title="Copy to clipboard"
+                    >
+                      📋
+                    </button>
+                  </div>
+                  <p className="location">{analysis.location}</p>
+                </div>
+              )}
+
               {analysis.confidence !== undefined && analysis.confidence !== null && (
                 <div className="confidence-indicator">
                   <label>AI Confidence:</label>
@@ -432,6 +545,54 @@ const ImageDetail: React.FC = () => {
           )}
         </div>
       </div>
+
+      {showCollections && (
+        <div className="collections-modal-overlay">
+          <div className="collections-modal">
+            <div className="modal-header">
+              <h3>Add to Collection</h3>
+              <button 
+                onClick={() => setShowCollections(false)}
+                className="close-button"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="modal-content">
+              {collections.length === 0 ? (
+                <div className="no-collections">
+                  <p>No manual collections available.</p>
+                  <Link to="/collections" className="create-collection-link">
+                    Create a Collection
+                  </Link>
+                </div>
+              ) : (
+                <div className="collections-list">
+                  {collections.map((collection) => (
+                    <div 
+                      key={collection.id} 
+                      className="collection-option"
+                      onClick={() => handleAddToCollection(collection.id!)}
+                    >
+                      <div className="collection-icon">📁</div>
+                      <div className="collection-info">
+                        <div className="collection-name">{collection.name}</div>
+                        {collection.description && (
+                          <div className="collection-description">{collection.description}</div>
+                        )}
+                        <div className="collection-count">
+                          {collection.imageCount || 0} images
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

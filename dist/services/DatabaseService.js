@@ -70,6 +70,10 @@ class DatabaseService {
         keywords TEXT NOT NULL,
         confidence REAL,
         analysis_date TEXT NOT NULL,
+        title TEXT,
+        headline TEXT,
+        instructions TEXT,
+        location TEXT,
         FOREIGN KEY (image_id) REFERENCES images (id) ON DELETE CASCADE
       )
     `);
@@ -84,6 +88,7 @@ class DatabaseService {
         make TEXT,
         model TEXT,
         software TEXT,
+        lens TEXT,
         iso INTEGER,
         f_number REAL,
         exposure_time TEXT,
@@ -110,6 +115,64 @@ class DatabaseService {
         FOREIGN KEY (image_id) REFERENCES images (id) ON DELETE CASCADE
       )
     `);
+        // Add new columns to existing gemini_analysis table if they don't exist
+        try {
+            await run(`ALTER TABLE gemini_analysis ADD COLUMN title TEXT`);
+        }
+        catch (e) {
+            // Column already exists, ignore
+        }
+        try {
+            await run(`ALTER TABLE gemini_analysis ADD COLUMN headline TEXT`);
+        }
+        catch (e) {
+            // Column already exists, ignore
+        }
+        try {
+            await run(`ALTER TABLE gemini_analysis ADD COLUMN instructions TEXT`);
+        }
+        catch (e) {
+            // Column already exists, ignore
+        }
+        try {
+            await run(`ALTER TABLE gemini_analysis ADD COLUMN location TEXT`);
+        }
+        catch (e) {
+            // Column already exists, ignore
+        }
+        // Add lens column to image_metadata table if it doesn't exist
+        try {
+            await run(`ALTER TABLE image_metadata ADD COLUMN lens TEXT`);
+        }
+        catch (e) {
+            // Column already exists, ignore
+        }
+        // Create collections table
+        await run(`
+      CREATE TABLE IF NOT EXISTS collections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        type TEXT NOT NULL,
+        rules TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      )
+    `);
+        // Create collection_images table for manual collections
+        await run(`
+      CREATE TABLE IF NOT EXISTS collection_images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        collection_id INTEGER NOT NULL,
+        image_id INTEGER NOT NULL,
+        added_at TEXT NOT NULL,
+        FOREIGN KEY (collection_id) REFERENCES collections (id) ON DELETE CASCADE,
+        FOREIGN KEY (image_id) REFERENCES images (id) ON DELETE CASCADE,
+        UNIQUE(collection_id, image_id)
+      )
+    `);
         // Create indexes for better performance
         await run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users (username)`);
         await run(`CREATE INDEX IF NOT EXISTS idx_images_status ON images (status)`);
@@ -124,6 +187,10 @@ class DatabaseService {
         await run(`CREATE INDEX IF NOT EXISTS idx_metadata_keywords ON image_metadata (keywords)`);
         await run(`CREATE INDEX IF NOT EXISTS idx_metadata_city ON image_metadata (city)`);
         await run(`CREATE INDEX IF NOT EXISTS idx_metadata_creator ON image_metadata (creator)`);
+        await run(`CREATE INDEX IF NOT EXISTS idx_collections_user_id ON collections (user_id)`);
+        await run(`CREATE INDEX IF NOT EXISTS idx_collections_type ON collections (type)`);
+        await run(`CREATE INDEX IF NOT EXISTS idx_collection_images_collection ON collection_images (collection_id)`);
+        await run(`CREATE INDEX IF NOT EXISTS idx_collection_images_image ON collection_images (image_id)`);
     }
     static async insertImage(imageData) {
         return new Promise((resolve, reject) => {
@@ -287,15 +354,19 @@ class DatabaseService {
         return new Promise((resolve, reject) => {
             this.db.run(`
         INSERT INTO gemini_analysis (
-          image_id, description, caption, keywords, confidence, analysis_date
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          image_id, description, caption, keywords, confidence, analysis_date, title, headline, instructions, location
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
                 analysisData.imageId,
                 analysisData.description,
                 analysisData.caption,
                 JSON.stringify(analysisData.keywords),
                 analysisData.confidence,
-                analysisData.analysisDate
+                analysisData.analysisDate,
+                analysisData.title,
+                analysisData.headline,
+                analysisData.instructions,
+                analysisData.location
             ], function (err) {
                 if (err) {
                     reject(err);
@@ -320,7 +391,11 @@ class DatabaseService {
             caption: row.caption,
             keywords: JSON.parse(row.keywords),
             confidence: row.confidence ? parseFloat(row.confidence) : undefined,
-            analysisDate: row.analysis_date
+            analysisDate: row.analysis_date,
+            title: row.title,
+            headline: row.headline,
+            instructions: row.instructions,
+            location: row.location
         };
     }
     static mapRowToImageMetadata(row) {
@@ -346,12 +421,12 @@ class DatabaseService {
         return new Promise((resolve, reject) => {
             this.db.run(`
         INSERT INTO image_metadata (
-          image_id, latitude, longitude, altitude, make, model, software,
+          image_id, latitude, longitude, altitude, make, model, software, lens,
           iso, f_number, exposure_time, focal_length, flash, white_balance,
           date_time_original, date_time_digitized, title, description, keywords,
           creator, copyright, city, state, country, color_space, orientation,
           x_resolution, y_resolution, resolution_unit, raw_exif, extracted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
                 metadataData.imageId,
                 metadataData.latitude,
@@ -360,6 +435,7 @@ class DatabaseService {
                 metadataData.make,
                 metadataData.model,
                 metadataData.software,
+                metadataData.lens,
                 metadataData.iso,
                 metadataData.fNumber,
                 metadataData.exposureTime,
@@ -410,6 +486,7 @@ class DatabaseService {
             make: row.make,
             model: row.model,
             software: row.software,
+            lens: row.lens,
             iso: row.iso,
             fNumber: row.f_number,
             exposureTime: row.exposure_time,
@@ -453,6 +530,163 @@ class DatabaseService {
       `, 'admin', 'admin@image-tagger.local', 'Default Admin', passwordHash, 1, now, now);
             console.log('Created default admin user (username: admin, password: admin123)');
         }
+    }
+    // Collection methods
+    static async insertCollection(collectionData) {
+        return new Promise((resolve, reject) => {
+            this.db.run(`
+        INSERT INTO collections (
+          name, description, type, rules, created_at, updated_at, user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [
+                collectionData.name,
+                collectionData.description,
+                collectionData.type,
+                collectionData.rules ? JSON.stringify(collectionData.rules) : null,
+                collectionData.createdAt,
+                collectionData.updatedAt,
+                collectionData.userId
+            ], function (err) {
+                if (err) {
+                    reject(err);
+                }
+                else {
+                    resolve(this.lastID);
+                }
+            });
+        });
+    }
+    static async getUserCollections(userId) {
+        const all = (0, util_1.promisify)(this.db.all.bind(this.db));
+        const rows = await all(`
+      SELECT c.*, COUNT(ci.image_id) as image_count
+      FROM collections c
+      LEFT JOIN collection_images ci ON c.id = ci.collection_id
+      WHERE c.user_id = ?
+      GROUP BY c.id
+      ORDER BY c.updated_at DESC
+    `, [userId]);
+        return rows.map(this.mapRowToCollection);
+    }
+    static async getCollection(collectionId) {
+        const get = (0, util_1.promisify)(this.db.get.bind(this.db));
+        const row = await get(`
+      SELECT c.*, COUNT(ci.image_id) as image_count
+      FROM collections c
+      LEFT JOIN collection_images ci ON c.id = ci.collection_id
+      WHERE c.id = ?
+      GROUP BY c.id
+    `, [collectionId]);
+        if (!row)
+            return null;
+        return this.mapRowToCollection(row);
+    }
+    static async updateCollection(collectionId, updates) {
+        const fields = [];
+        const values = [];
+        if (updates.name !== undefined) {
+            fields.push('name = ?');
+            values.push(updates.name);
+        }
+        if (updates.description !== undefined) {
+            fields.push('description = ?');
+            values.push(updates.description);
+        }
+        if (updates.rules !== undefined) {
+            fields.push('rules = ?');
+            values.push(JSON.stringify(updates.rules));
+        }
+        if (updates.updatedAt !== undefined) {
+            fields.push('updated_at = ?');
+            values.push(updates.updatedAt);
+        }
+        if (fields.length === 0)
+            return;
+        values.push(collectionId);
+        return new Promise((resolve, reject) => {
+            this.db.run(`
+        UPDATE collections
+        SET ${fields.join(', ')}
+        WHERE id = ?
+      `, values, function (err) {
+                if (err) {
+                    reject(err);
+                }
+                else {
+                    resolve();
+                }
+            });
+        });
+    }
+    static async deleteCollection(collectionId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(`DELETE FROM collections WHERE id = ?`, [collectionId], function (err) {
+                if (err) {
+                    reject(err);
+                }
+                else {
+                    resolve();
+                }
+            });
+        });
+    }
+    static async addImageToCollection(collectionId, imageId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(`
+        INSERT OR IGNORE INTO collection_images (collection_id, image_id, added_at)
+        VALUES (?, ?, ?)
+      `, [collectionId, imageId, new Date().toISOString()], function (err) {
+                if (err) {
+                    reject(err);
+                }
+                else {
+                    resolve();
+                }
+            });
+        });
+    }
+    static async removeImageFromCollection(collectionId, imageId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(`
+        DELETE FROM collection_images 
+        WHERE collection_id = ? AND image_id = ?
+      `, [collectionId, imageId], function (err) {
+                if (err) {
+                    reject(err);
+                }
+                else {
+                    resolve();
+                }
+            });
+        });
+    }
+    static async getManualCollectionImages(collectionId) {
+        const all = (0, util_1.promisify)(this.db.all.bind(this.db));
+        const rows = await all(`
+      SELECT i.* FROM images i
+      INNER JOIN collection_images ci ON i.id = ci.image_id
+      WHERE ci.collection_id = ?
+      ORDER BY ci.added_at DESC
+    `, [collectionId]);
+        return rows.map(this.mapRowToImageMetadata);
+    }
+    static async executeSmartCollectionQuery(query, params) {
+        const all = (0, util_1.promisify)(this.db.all.bind(this.db));
+        const rows = await all(query, params);
+        return rows.map(this.mapRowToImageMetadata);
+    }
+    static mapRowToCollection(row) {
+        return {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            type: row.type,
+            rules: row.rules ? JSON.parse(row.rules) : undefined,
+            imageCount: row.image_count || 0,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            userId: row.user_id
+        };
     }
     static async close() {
         return new Promise((resolve) => {

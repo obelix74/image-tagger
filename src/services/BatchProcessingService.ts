@@ -12,6 +12,11 @@ export interface BatchProcessingOptions {
   quality?: number;
   skipDuplicates?: boolean;
   parallelConnections?: number;
+  maxRetries?: number;
+  retryDelay?: number;
+  enableRateLimit?: boolean;
+  maxConcurrentAnalysis?: number;
+  customPrompt?: string;
 }
 
 export interface BatchProcessingResult {
@@ -21,15 +26,29 @@ export interface BatchProcessingResult {
   successfulFiles: number;
   duplicateFiles: number;
   errorFiles: number;
+  retryingFiles: number;
+  pendingAnalysis: number;
+  completedAnalysis: number;
+  failedAnalysis: number;
   errors: Array<{
     file: string;
     error: string;
-    type: 'duplicate' | 'processing' | 'unsupported';
+    type: 'duplicate' | 'processing' | 'unsupported' | 'analysis' | 'retry_exhausted';
+    retryCount?: number;
   }>;
   processedImages: ImageMetadata[];
-  status: 'processing' | 'completed' | 'error';
+  status: 'processing' | 'completed' | 'error' | 'paused';
   startTime: string;
   endTime?: string;
+  estimatedTimeRemaining?: string;
+  processingRate?: number;
+  memoryUsage?: {
+    used: number;
+    total: number;
+    percentage: number;
+  };
+  currentPhase: 'discovery' | 'uploading' | 'analysis' | 'finalizing';
+  pauseRequested?: boolean;
 }
 
 export interface BatchJob {
@@ -40,12 +59,39 @@ export interface BatchJob {
   createdAt: string;
 }
 
+interface AnalysisTask {
+  imageId: number;
+  imagePath: string;
+  retryCount: number;
+  batchId: string;
+}
+
+interface ProcessingMetrics {
+  startTime: number;
+  lastUpdateTime: number;
+  processedCount: number;
+  totalFileSize: number;
+  processedFileSize: number;
+}
+
 export class BatchProcessingService {
   private static activeBatches = new Map<string, BatchJob>();
+  private static analysisQueue = new Map<string, AnalysisTask[]>();
+  private static activeAnalysis = new Map<string, Set<number>>();
+  private static processingMetrics = new Map<string, ProcessingMetrics>();
+  private static rateLimiter = new Map<string, number>();
+  
   private static readonly SUPPORTED_EXTENSIONS = [
     '.jpg', '.jpeg', '.png', '.tiff', '.tif', 
     '.cr2', '.nef', '.arw', '.dng', '.raf', '.orf', '.rw2'
   ];
+  
+  private static readonly DEFAULT_OPTIONS = {
+    maxRetries: 3,
+    retryDelay: 2000,
+    enableRateLimit: true,
+    maxConcurrentAnalysis: 5
+  };
 
   static async startBatchProcessing(
     folderPath: string, 
@@ -63,7 +109,11 @@ export class BatchProcessingService {
         geminiImageSize: options.geminiImageSize || parseInt(process.env.GEMINI_IMAGE_SIZE || '1024'),
         quality: options.quality || 85,
         skipDuplicates: options.skipDuplicates !== false,
-        parallelConnections: options.parallelConnections || 1
+        parallelConnections: options.parallelConnections || 1,
+        maxRetries: options.maxRetries ?? this.DEFAULT_OPTIONS.maxRetries,
+        retryDelay: options.retryDelay ?? this.DEFAULT_OPTIONS.retryDelay,
+        enableRateLimit: options.enableRateLimit ?? this.DEFAULT_OPTIONS.enableRateLimit,
+        maxConcurrentAnalysis: options.maxConcurrentAnalysis ?? this.DEFAULT_OPTIONS.maxConcurrentAnalysis
       },
       result: {
         batchId,
@@ -72,15 +122,33 @@ export class BatchProcessingService {
         successfulFiles: 0,
         duplicateFiles: 0,
         errorFiles: 0,
+        retryingFiles: 0,
+        pendingAnalysis: 0,
+        completedAnalysis: 0,
+        failedAnalysis: 0,
         errors: [],
         processedImages: [],
         status: 'processing',
-        startTime
+        startTime,
+        currentPhase: 'discovery',
+        processingRate: 0,
+        memoryUsage: this.getMemoryUsage()
       },
       createdAt: startTime
     };
 
     this.activeBatches.set(batchId, batchJob);
+    
+    // Initialize tracking structures
+    this.analysisQueue.set(batchId, []);
+    this.activeAnalysis.set(batchId, new Set());
+    this.processingMetrics.set(batchId, {
+      startTime: Date.now(),
+      lastUpdateTime: Date.now(),
+      processedCount: 0,
+      totalFileSize: 0,
+      processedFileSize: 0
+    });
 
     // Start processing in background
     this.processBatchInBackground(batchJob);
@@ -96,16 +164,103 @@ export class BatchProcessingService {
   static async getAllBatches(): Promise<BatchJob[]> {
     return Array.from(this.activeBatches.values());
   }
+  
+  static async pauseBatch(batchId: string): Promise<boolean> {
+    const batch = this.activeBatches.get(batchId);
+    if (!batch || batch.result.status !== 'processing') {
+      return false;
+    }
+    
+    batch.result.pauseRequested = true;
+    console.log(`🛑 Pause requested for batch ${batchId}`);
+    return true;
+  }
+  
+  static async resumeBatch(batchId: string): Promise<boolean> {
+    const batch = this.activeBatches.get(batchId);
+    if (!batch || batch.result.status !== 'paused') {
+      return false;
+    }
+    
+    batch.result.status = 'processing';
+    batch.result.pauseRequested = false;
+    console.log(`▶️ Resuming batch ${batchId}`);
+    
+    // Resume processing
+    this.processBatchInBackground(batch);
+    return true;
+  }
+  
+  private static getMemoryUsage() {
+    const usage = process.memoryUsage();
+    return {
+      used: Math.round(usage.heapUsed / 1024 / 1024),
+      total: Math.round(usage.heapTotal / 1024 / 1024),
+      percentage: Math.round((usage.heapUsed / usage.heapTotal) * 100)
+    };
+  }
+  
+  private static updateProcessingMetrics(batchId: string, fileSize: number = 0) {
+    const metrics = this.processingMetrics.get(batchId);
+    const batch = this.activeBatches.get(batchId);
+    
+    if (!metrics || !batch) return;
+    
+    const now = Date.now();
+    metrics.processedCount++;
+    metrics.processedFileSize += fileSize;
+    
+    // Calculate processing rate (files per minute)
+    const elapsed = (now - metrics.startTime) / 1000 / 60;
+    batch.result.processingRate = elapsed > 0 ? Math.round(metrics.processedCount / elapsed) : 0;
+    
+    // Estimate time remaining
+    if (batch.result.processingRate > 0 && batch.result.totalFiles > 0) {
+      const remaining = batch.result.totalFiles - batch.result.processedFiles;
+      const minutesRemaining = remaining / batch.result.processingRate;
+      
+      if (minutesRemaining < 60) {
+        batch.result.estimatedTimeRemaining = `${Math.round(minutesRemaining)}m`;
+      } else {
+        const hours = Math.floor(minutesRemaining / 60);
+        const minutes = Math.round(minutesRemaining % 60);
+        batch.result.estimatedTimeRemaining = `${hours}h ${minutes}m`;
+      }
+    }
+    
+    // Update memory usage
+    batch.result.memoryUsage = this.getMemoryUsage();
+    
+    metrics.lastUpdateTime = now;
+  }
 
   private static async processBatchInBackground(batchJob: BatchJob): Promise<void> {
     try {
       console.log(`Starting batch processing for folder: ${batchJob.folderPath}`);
       
+      // Check for pause before starting
+      if (batchJob.result.pauseRequested) {
+        batchJob.result.status = 'paused';
+        console.log(`🛑 Batch ${batchJob.id} paused during initialization`);
+        return;
+      }
+      
       // Discover all image files recursively
+      batchJob.result.currentPhase = 'discovery';
       const imageFiles = await this.discoverImageFiles(batchJob.folderPath);
       batchJob.result.totalFiles = imageFiles.length;
 
       console.log(`Found ${imageFiles.length} image files to process`);
+      
+      if (imageFiles.length === 0) {
+        batchJob.result.status = 'completed';
+        batchJob.result.endTime = new Date().toISOString();
+        console.log(`No images found in ${batchJob.folderPath}`);
+        return;
+      }
+      
+      // Update phase to uploading
+      batchJob.result.currentPhase = 'uploading';
 
       const uploadDir = process.env.UPLOAD_DIR || './uploads';
       const thumbnailDir = process.env.THUMBNAIL_DIR || './thumbnails';
@@ -114,18 +269,28 @@ export class BatchProcessingService {
       await ImageProcessingService.ensureDirectoryExists(uploadDir);
       await ImageProcessingService.ensureDirectoryExists(thumbnailDir);
 
-      // Process images with parallel connections
+      // Process images with enhanced parallel processing
       const parallelConnections = batchJob.options.parallelConnections || 1;
 
       if (parallelConnections === 1) {
-        // Sequential processing (original behavior)
+        // Sequential processing with pause support
         for (let i = 0; i < imageFiles.length; i++) {
+          // Check for pause request
+          if (batchJob.result.pauseRequested) {
+            batchJob.result.status = 'paused';
+            console.log(`🛑 Batch ${batchJob.id} paused at image ${i + 1}/${imageFiles.length}`);
+            return;
+          }
+          
           const filePath = imageFiles[i];
           console.log(`📸 Processing image ${i + 1}/${imageFiles.length}: ${path.basename(filePath)}`);
 
           try {
+            const fileStats = await fs.stat(filePath);
             await this.processFile(filePath, batchJob, uploadDir, thumbnailDir);
             console.log(`✅ Successfully processed image ${i + 1}/${imageFiles.length}`);
+            batchJob.result.successfulFiles++;
+            this.updateProcessingMetrics(batchJob.id, fileStats.size);
           } catch (error) {
             console.error(`❌ Error processing file ${filePath}:`, error);
             batchJob.result.errorFiles++;
@@ -138,16 +303,27 @@ export class BatchProcessingService {
 
           batchJob.result.processedFiles++;
 
-          // Log progress
+          // Log progress with enhanced metrics
           const progress = Math.round((batchJob.result.processedFiles / batchJob.result.totalFiles) * 100);
-          console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%)`);
+          const memUsage = batchJob.result.memoryUsage;
+          console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%) | Rate: ${batchJob.result.processingRate}/min | Memory: ${memUsage?.used}MB (${memUsage?.percentage}%)`);
         }
       } else {
-        // Parallel processing
+        // Enhanced parallel processing
         console.log(`🚀 Processing ${imageFiles.length} images with ${parallelConnections} parallel connections`);
-        await this.processImagesInParallel(batchJob, imageFiles, uploadDir, thumbnailDir, parallelConnections);
+        await this.processImagesInParallelEnhanced(batchJob, imageFiles, uploadDir, thumbnailDir, parallelConnections);
       }
+      
+      // Start analysis phase
+      batchJob.result.currentPhase = 'analysis';
+      await this.processAnalysisQueue(batchJob.id);
 
+      // Finalization phase
+      batchJob.result.currentPhase = 'finalizing';
+      
+      // Wait for any remaining analysis tasks
+      await this.waitForAnalysisCompletion(batchJob.id);
+      
       // Mark batch as completed
       batchJob.result.status = 'completed';
       batchJob.result.endTime = new Date().toISOString();
@@ -158,6 +334,11 @@ export class BatchProcessingService {
       console.log(`   🔄 Duplicates: ${batchJob.result.duplicateFiles}`);
       console.log(`   ❌ Errors: ${batchJob.result.errorFiles}`);
       console.log(`   📁 Total Files: ${batchJob.result.totalFiles}`);
+      console.log(`   🤖 AI Analysis - Completed: ${batchJob.result.completedAnalysis}, Failed: ${batchJob.result.failedAnalysis}`);
+      console.log(`   ⏱️ Total Duration: ${this.formatDuration(batchJob.result.startTime, batchJob.result.endTime!)}`);
+      
+      // Cleanup tracking structures
+      this.cleanupBatchTracking(batchJob.id);
 
     } catch (error) {
       console.error('Batch processing failed:', error);
@@ -311,31 +492,20 @@ export class BatchProcessingService {
           }
         }
 
-        // Start AI analysis (parallel or sequential based on settings)
-        if (batchJob.options.parallelConnections === 1) {
-          // Sequential: wait for AI analysis to complete
-          console.log(`Starting sequential AI analysis for image ${imageId}`);
-          await this.processImageAnalysisInBackground(imageId, processedResult.processedPath);
-          console.log(`Completed AI analysis for image ${imageId}, ready for next image`);
-        } else {
-          // Parallel: start AI analysis in background without waiting
-          console.log(`Starting parallel AI analysis for image ${imageId}`);
-          this.processImageAnalysisInBackground(imageId, processedResult.processedPath)
-            .then(() => {
-              // Clean up uploaded file after AI analysis is complete
-              this.cleanupUploadedFile(destinationPath);
-            })
-            .catch(error => {
-              console.error(`AI analysis failed for image ${imageId}:`, error);
-              // Still clean up the uploaded file even if analysis failed
-              this.cleanupUploadedFile(destinationPath);
-            });
+        // Queue AI analysis task for later processing
+        const queue = this.analysisQueue.get(batchJob.id);
+        if (queue) {
+          queue.push({
+            imageId,
+            imagePath: processedResult.processedPath,
+            retryCount: 0,
+            batchId: batchJob.id
+          });
+          console.log(`📋 Queued AI analysis for image ${imageId} (queue length: ${queue.length})`);
         }
 
-        // For sequential processing, clean up after AI analysis
-        if (batchJob.options.parallelConnections === 1) {
-          this.cleanupUploadedFile(destinationPath);
-        }
+        // Clean up uploaded file immediately (processed file is kept for analysis)
+        this.cleanupUploadedFile(destinationPath);
 
         // Force garbage collection every 10 images to prevent memory buildup
         if (batchJob.result.processedFiles % 10 === 0) {
@@ -403,6 +573,188 @@ export class BatchProcessingService {
     await Promise.all(workers);
   }
 
+  private static async processImagesInParallelEnhanced(
+    batchJob: BatchJob,
+    imageFiles: string[],
+    uploadDir: string,
+    thumbnailDir: string,
+    parallelConnections: number
+  ): Promise<void> {
+    const semaphore = new Array(parallelConnections).fill(null);
+    let currentIndex = 0;
+
+    const processNext = async (): Promise<void> => {
+      while (currentIndex < imageFiles.length && !batchJob.result.pauseRequested) {
+        const index = currentIndex++;
+        const filePath = imageFiles[index];
+
+        console.log(`📸 Processing image ${index + 1}/${imageFiles.length}: ${path.basename(filePath)}`);
+
+        try {
+          const fileStats = await fs.stat(filePath);
+          await this.processFile(filePath, batchJob, uploadDir, thumbnailDir);
+          console.log(`✅ Successfully processed image ${index + 1}/${imageFiles.length}`);
+          batchJob.result.successfulFiles++;
+          this.updateProcessingMetrics(batchJob.id, fileStats.size);
+        } catch (error) {
+          console.error(`❌ Error processing file ${filePath}:`, error);
+          batchJob.result.errorFiles++;
+          batchJob.result.errors.push({
+            file: filePath,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            type: 'processing'
+          });
+        }
+
+        batchJob.result.processedFiles++;
+
+        // Enhanced progress logging
+        const progress = Math.round((batchJob.result.processedFiles / batchJob.result.totalFiles) * 100);
+        const memUsage = batchJob.result.memoryUsage;
+        console.log(`📊 Batch progress: ${batchJob.result.processedFiles}/${batchJob.result.totalFiles} (${progress}%) | Rate: ${batchJob.result.processingRate}/min | Memory: ${memUsage?.used}MB (${memUsage?.percentage}%) | ETA: ${batchJob.result.estimatedTimeRemaining || 'calculating...'}`);
+        
+        // Force garbage collection periodically
+        if (batchJob.result.processedFiles % 5 === 0 && global.gc) {
+          global.gc();
+        }
+      }
+    };
+
+    // Start parallel workers
+    const workers = semaphore.map(() => processNext());
+    await Promise.all(workers);
+    
+    // Check if paused during processing
+    if (batchJob.result.pauseRequested) {
+      batchJob.result.status = 'paused';
+      console.log(`🛑 Batch ${batchJob.id} paused during parallel processing`);
+    }
+  }
+
+  private static async processAnalysisQueue(batchId: string): Promise<void> {
+    const batch = this.activeBatches.get(batchId);
+    const queue = this.analysisQueue.get(batchId);
+    const activeSet = this.activeAnalysis.get(batchId);
+    
+    if (!batch || !queue || !activeSet) return;
+    
+    const maxConcurrent = batch.options.maxConcurrentAnalysis || this.DEFAULT_OPTIONS.maxConcurrentAnalysis;
+    
+    while (queue.length > 0 && !batch.result.pauseRequested) {
+      // Process analysis tasks with concurrency limit
+      const currentBatch = queue.splice(0, Math.min(maxConcurrent, queue.length));
+      batch.result.pendingAnalysis = queue.length;
+      
+      const analysisPromises = currentBatch.map(task => 
+        this.processAnalysisTaskWithRetry(task, batch)
+      );
+      
+      await Promise.allSettled(analysisPromises);
+      
+      // Wait a bit if rate limiting is enabled
+      if (batch.options.enableRateLimit) {
+        await this.applyRateLimit(batchId);
+      }
+    }
+  }
+
+  private static async processAnalysisTaskWithRetry(task: AnalysisTask, batch: BatchJob): Promise<void> {
+    const activeSet = this.activeAnalysis.get(task.batchId);
+    if (!activeSet) return;
+    
+    activeSet.add(task.imageId);
+    
+    try {
+      await this.processImageAnalysisInBackgroundEnhanced(task.imageId, task.imagePath, batch);
+      batch.result.completedAnalysis++;
+      console.log(`✅ AI analysis completed for image ${task.imageId} (attempt ${task.retryCount + 1})`);
+    } catch (error) {
+      console.error(`❌ AI analysis failed for image ${task.imageId} (attempt ${task.retryCount + 1}):`, error);
+      
+      if (task.retryCount < (batch.options.maxRetries || this.DEFAULT_OPTIONS.maxRetries)) {
+        // Retry the task
+        task.retryCount++;
+        batch.result.retryingFiles++;
+        
+        console.log(`🔄 Retrying AI analysis for image ${task.imageId} (attempt ${task.retryCount + 1})`);
+        
+        // Add delay before retry
+        await new Promise(resolve => setTimeout(resolve, batch.options.retryDelay || this.DEFAULT_OPTIONS.retryDelay));
+        
+        // Re-queue the task
+        const queue = this.analysisQueue.get(task.batchId);
+        if (queue) {
+          queue.push(task);
+        }
+        
+        batch.result.retryingFiles--;
+      } else {
+        // Max retries exhausted
+        batch.result.failedAnalysis++;
+        batch.result.errors.push({
+          file: `Image ID: ${task.imageId}`,
+          error: error instanceof Error ? error.message : 'Unknown analysis error',
+          type: 'retry_exhausted',
+          retryCount: task.retryCount
+        });
+        
+        // Mark image as failed in database
+        await DatabaseService.updateImageStatus(task.imageId, 'error', `AI analysis failed after ${task.retryCount} retries: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    } finally {
+      activeSet.delete(task.imageId);
+    }
+  }
+
+  private static async waitForAnalysisCompletion(batchId: string): Promise<void> {
+    const batch = this.activeBatches.get(batchId);
+    const activeSet = this.activeAnalysis.get(batchId);
+    const queue = this.analysisQueue.get(batchId);
+    
+    if (!batch || !activeSet || !queue) return;
+    
+    // Wait for all active analysis tasks to complete
+    while ((activeSet.size > 0 || queue.length > 0) && !batch.result.pauseRequested) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Update pending count
+      batch.result.pendingAnalysis = queue.length + activeSet.size;
+      
+      console.log(`⏳ Waiting for ${activeSet.size} active and ${queue.length} queued analysis tasks to complete...`);
+    }
+  }
+
+  private static async applyRateLimit(batchId: string): Promise<void> {
+    const lastCall = this.rateLimiter.get(batchId) || 0;
+    const now = Date.now();
+    const minInterval = 100; // Minimum 100ms between batches of API calls
+    
+    const elapsed = now - lastCall;
+    if (elapsed < minInterval) {
+      await new Promise(resolve => setTimeout(resolve, minInterval - elapsed));
+    }
+    
+    this.rateLimiter.set(batchId, Date.now());
+  }
+
+  private static cleanupBatchTracking(batchId: string): void {
+    this.analysisQueue.delete(batchId);
+    this.activeAnalysis.delete(batchId);
+    this.processingMetrics.delete(batchId);
+    this.rateLimiter.delete(batchId);
+    console.log(`🧹 Cleaned up tracking structures for batch ${batchId}`);
+  }
+
+  private static formatDuration(startTime: string, endTime: string): string {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const duration = Math.round((end.getTime() - start.getTime()) / 1000);
+    
+    if (duration < 60) return `${duration}s`;
+    if (duration < 3600) return `${Math.floor(duration / 60)}m ${duration % 60}s`;
+    return `${Math.floor(duration / 3600)}h ${Math.floor((duration % 3600) / 60)}m`;
+  }
+
   private static generateSafeFilename(originalFilename: string): string {
     const uuid = uuidv4();
     const ext = path.extname(originalFilename);
@@ -441,6 +793,52 @@ export class BatchProcessingService {
       console.log(`🗑️ Cleaned up uploaded file: ${path.basename(filePath)}`);
     } catch (error) {
       console.warn(`Failed to cleanup uploaded file ${filePath}:`, error);
+    }
+  }
+
+  private static async processImageAnalysisInBackgroundEnhanced(imageId: number, imagePath: string, batch: BatchJob): Promise<void> {
+    try {
+      // Update status to processing
+      await DatabaseService.updateImageStatus(imageId, 'processing');
+
+      console.log(`Starting enhanced AI analysis for image ${imageId}`);
+
+      // Use localized prompts if available
+      const prompt = batch.options.customPrompt || undefined;
+
+      // Analyze with Gemini (this will now throw errors instead of returning fallback)
+      const analysis = await GeminiService.analyzeImageFromPath(imagePath, false, prompt);
+
+      // Save analysis to database with extended metadata
+      const analysisData = {
+        imageId,
+        description: analysis.description,
+        caption: analysis.caption,
+        keywords: analysis.keywords,
+        title: analysis.title,
+        headline: analysis.headline,
+        instructions: analysis.instructions,
+        location: analysis.location,
+        confidence: analysis.confidence,
+        analysisDate: new Date().toISOString()
+      };
+      await DatabaseService.insertAnalysis(analysisData);
+
+      // Update status to completed only if AI analysis succeeded
+      await DatabaseService.updateImageStatus(imageId, 'completed');
+
+      console.log(`✅ Enhanced AI analysis completed successfully for image ${imageId}`);
+    } catch (error) {
+      console.error(`❌ Enhanced AI analysis failed for image ${imageId}:`, error);
+
+      // Update status to error with detailed error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown AI analysis error';
+      await DatabaseService.updateImageStatus(imageId, 'error', `AI analysis failed: ${errorMessage}`);
+
+      console.log(`🚫 Image ${imageId} marked as failed due to AI analysis error`);
+
+      // Re-throw the error so batch processing can handle it appropriately
+      throw error;
     }
   }
 

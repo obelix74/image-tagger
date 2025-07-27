@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import LanguageSelector from './LanguageSelector';
 import './Header.css';
 
 const Header: React.FC = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const handleLogout = async () => {
@@ -17,8 +20,8 @@ const Header: React.FC = () => {
     <header className="header">
       <div className="header-content">
         <div className="logo">
-          <h1>AI Image Tagger</h1>
-          <span className="subtitle">Powered by Gemini AI</span>
+          <h1>{t('header.title')}</h1>
+          <span className="subtitle">{t('header.subtitle')}</span>
         </div>
 
         <nav className="navigation">
@@ -26,17 +29,26 @@ const Header: React.FC = () => {
             to="/"
             className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
           >
-            Gallery
+            {t('header.gallery')}
           </Link>
           <Link
             to="/upload"
             className={`nav-link ${location.pathname === '/upload' ? 'active' : ''}`}
           >
-            Upload
+            {t('header.upload')}
+          </Link>
+          <Link
+            to="/collections"
+            className={`nav-link ${location.pathname.startsWith('/collections') ? 'active' : ''}`}
+          >
+            {t('header.collections')}
           </Link>
         </nav>
 
-        {user && (
+        <div className="header-actions">
+          <LanguageSelector />
+          
+          {user && (
           <div className="user-menu">
             <button
               className="user-button"
@@ -59,12 +71,13 @@ const Header: React.FC = () => {
                   {user.isAdmin && <div className="admin-badge">Admin</div>}
                 </div>
                 <button className="logout-button" onClick={handleLogout}>
-                  Sign Out
+                  {t('header.logout')}
                 </button>
               </div>
             )}
           </div>
-        )}
+          )}
+        </div>
       </div>
     </header>
   );

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { imageApi, type BatchJob, type BatchProcessingOptions } from '../services/api';
+import PromptConfiguration from './PromptConfiguration';
 import './BatchProcessing.css';
 
 const BatchProcessing: React.FC = () => {
@@ -10,7 +11,8 @@ const BatchProcessing: React.FC = () => {
     thumbnailSize: 300,
     geminiImageSize: 1024,
     quality: 85,
-    parallelConnections: 1
+    parallelConnections: 1,
+    customPrompt: undefined
   });
   const [batches, setBatches] = useState<BatchJob[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,6 +101,10 @@ const BatchProcessing: React.FC = () => {
     } catch (error: any) {
       setError(error.response?.data?.error || error.message || 'Failed to delete batch');
     }
+  };
+
+  const handlePromptChange = (prompt: string) => {
+    setOptions({...options, customPrompt: prompt});
   };
 
   const getStatusIcon = (status: string) => {
@@ -242,6 +248,11 @@ const BatchProcessing: React.FC = () => {
               </label>
             </div>
           </div>
+
+          <PromptConfiguration 
+            onPromptChange={handlePromptChange}
+            currentPrompt={options.customPrompt}
+          />
 
           <button
             type="submit"
