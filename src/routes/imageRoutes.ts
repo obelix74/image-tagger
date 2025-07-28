@@ -6,12 +6,77 @@ import { v4 as uuidv4 } from 'uuid';
 import { DatabaseService } from '../services/DatabaseService';
 import { ImageProcessingService } from '../services/ImageProcessingService';
 import { GeminiService } from '../services/GeminiService';
+import { AIProviderFactory } from '../services/AIProviderFactory';
 import { BatchProcessingService } from '../services/BatchProcessingService';
 import { ImageMetadata, UploadResponse, AnalysisResponse } from '../types';
 import { requireAuth, optionalAuth } from '../middleware/auth';
 import { UserService } from '../services/UserService';
 
 const router = express.Router();
+
+// AI Provider Management Routes
+
+// Get current AI provider info
+router.get('/ai/provider/info', async (req, res): Promise<void> => {
+  try {
+    const info = AIProviderFactory.getProviderInfo();
+    const validation = await AIProviderFactory.validateCurrentProvider();
+    
+    res.json({
+      success: true,
+      provider: info.provider,
+      config: info.config,
+      status: validation.valid ? 'connected' : 'disconnected',
+      error: validation.error
+    });
+  } catch (error) {
+    console.error('Get provider info error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get provider information'
+    });
+  }
+});
+
+// Get available AI providers
+router.get('/ai/providers', async (req, res): Promise<void> => {
+  try {
+    const providers = await AIProviderFactory.getAvailableProviders();
+    
+    res.json({
+      success: true,
+      providers
+    });
+  } catch (error) {
+    console.error('Get available providers error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get available providers'
+    });
+  }
+});
+
+// Test current AI provider connection
+router.get('/ai/provider/test', async (req, res): Promise<void> => {
+  try {
+    const provider = AIProviderFactory.getProvider();
+    const isConnected = await provider.testConnection();
+    const providerType = AIProviderFactory.getProviderType();
+    
+    res.json({
+      success: true,
+      provider: providerType,
+      connected: isConnected,
+      message: isConnected ? `${providerType} AI provider is working` : `${providerType} AI provider connection failed`
+    });
+  } catch (error) {
+    console.error('Test AI provider error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to test AI provider connection'
+    });
+  }
+});
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -550,19 +615,24 @@ router.get('/search/keyword/:keyword', optionalAuth, async (req, res): Promise<v
   }
 });
 
-// Test Gemini connection
+// Test Gemini connection (legacy endpoint - redirects to new provider test)
 router.get('/test/gemini', async (req, res): Promise<void> => {
   try {
-    const isConnected = await GeminiService.testConnection();
+    const provider = AIProviderFactory.getProvider();
+    const providerType = AIProviderFactory.getProviderType();
+    const isConnected = await provider.testConnection();
+    
     res.json({
       success: true,
       connected: isConnected,
-      message: isConnected ? 'Gemini API is working' : 'Gemini API connection failed'
+      provider: providerType,
+      message: isConnected ? `${providerType} AI provider is working` : `${providerType} AI provider connection failed`,
+      note: 'This endpoint now tests the currently configured AI provider. Use /api/images/ai/provider/test for more details.'
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'Failed to test Gemini connection'
+      error: 'Failed to test AI provider connection'
     });
   }
 });
@@ -574,12 +644,18 @@ async function processImageInBackground(imageId: number, imagePath: string, useF
 
     console.log(`Starting AI analysis for image ${imageId}${useFallback ? ' (fallback mode)' : ''}`);
 
-    // Resize image for Gemini if needed
-    const geminiImageSize = parseInt(process.env.GEMINI_IMAGE_SIZE || '1024');
-    const resizedBuffer = await ImageProcessingService.resizeForGemini(imagePath, geminiImageSize);
+    // Get the current AI provider
+    const aiProvider = AIProviderFactory.getProvider();
+    const providerType = AIProviderFactory.getProviderType();
+    
+    console.log(`Using ${providerType} provider for image analysis`);
 
-    // Analyze with Gemini (include metadata for enhanced context)
-    const analysis = await GeminiService.analyzeImage(resizedBuffer, 'image/jpeg', useFallback, customPrompt, metadata);
+    // Resize image for AI processing if needed
+    const aiImageSize = parseInt(process.env.AI_IMAGE_SIZE || process.env.GEMINI_IMAGE_SIZE || '1024');
+    const resizedBuffer = await ImageProcessingService.resizeForGemini(imagePath, aiImageSize);
+
+    // Analyze with current AI provider (include metadata for enhanced context)
+    const analysis = await aiProvider.analyzeImage(resizedBuffer, 'image/jpeg', useFallback, customPrompt, metadata);
 
     // Save analysis to database
     const analysisData = {

@@ -3,53 +3,39 @@ import fs from 'fs/promises';
 import sharp from 'sharp';
 import { GeminiAnalysis } from '../types';
 import { PromptPresets } from './PromptPresets';
+import { BaseAIProvider, AnalysisResult } from './AIProvider';
 
-export class GeminiService {
+export class GeminiProvider extends BaseAIProvider {
   private static genAI: GoogleGenerativeAI;
   private static model: any;
-  private static lastRequestTime: number = 0;
-  private static readonly MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
-  private static readonly MAX_RETRIES = 3;
 
-  static initialize(): void {
+  initialize(): void {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY environment variable is required');
     }
 
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    GeminiProvider.genAI = new GoogleGenerativeAI(apiKey);
+    GeminiProvider.model = GeminiProvider.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   }
 
-  private static async rateLimitDelay(): Promise<void> {
-    const now = Date.now();
-    const timeSinceLastRequest = now - this.lastRequestTime;
 
-    if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
-      const delayTime = this.MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-      console.log(`Rate limiting: waiting ${delayTime}ms before next Gemini request`);
-      await new Promise(resolve => setTimeout(resolve, delayTime));
-    }
-
-    this.lastRequestTime = Date.now();
-  }
-
-  static async analyzeImage(imageBuffer: Buffer, mimeType: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'>> {
-    if (!this.model) {
+  async analyzeImage(imageBuffer: Buffer, mimeType: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<AnalysisResult> {
+    if (!GeminiProvider.model) {
       this.initialize();
     }
 
     // If fallback is requested, return fallback immediately
     if (useFallback) {
       console.log('Using fallback analysis as requested');
-      return this.getFallbackAnalysis();
+      return super.getFallbackAnalysis();
     }
 
     let prompt = customPrompt || PromptPresets.getDefaultPrompt();
     
     // Enhance prompt with EXIF metadata context if available
     if (metadata) {
-      const metadataContext = this.buildMetadataContext(metadata);
+      const metadataContext = super.buildMetadataContext(metadata);
       if (metadataContext) {
         prompt = `${metadataContext}\n\n${prompt}`;
       }
@@ -60,12 +46,12 @@ export class GeminiService {
 
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= BaseAIProvider.MAX_RETRIES; attempt++) {
       try {
         // Apply rate limiting
-        await this.rateLimitDelay();
+        await super.rateLimitDelay();
 
-        console.log(`Gemini API request attempt ${attempt}/${this.MAX_RETRIES}`);
+        console.log(`Gemini API request attempt ${attempt}/${BaseAIProvider.MAX_RETRIES}`);
 
         const imagePart = {
           inlineData: {
@@ -74,7 +60,7 @@ export class GeminiService {
           }
         };
 
-        const result = await this.model.generateContent([prompt, imagePart]);
+        const result = await GeminiProvider.model.generateContent([prompt, imagePart]);
         const response = await result.response;
         const text = response.text();
 
@@ -109,7 +95,7 @@ export class GeminiService {
         console.error(`Gemini API error on attempt ${attempt}:`, error);
 
         // If this is the last attempt, throw the error
-        if (attempt === this.MAX_RETRIES) {
+        if (attempt === BaseAIProvider.MAX_RETRIES) {
           break;
         }
 
@@ -121,48 +107,22 @@ export class GeminiService {
     }
 
     // All retries failed, throw the last error
-    console.error(`Gemini API failed after ${this.MAX_RETRIES} attempts`);
+    console.error(`Gemini API failed after ${BaseAIProvider.MAX_RETRIES} attempts`);
     throw new Error(`Gemini AI analysis failed: ${lastError?.message || 'Unknown error'}`);
   }
 
-  static async analyzeImageFromPath(imagePath: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'>> {
+  async analyzeImageFromPath(imagePath: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<AnalysisResult> {
     const imageBuffer = await fs.readFile(imagePath);
-    const mimeType = this.getMimeTypeFromPath(imagePath);
+    const mimeType = super.getMimeTypeFromPath(imagePath);
 
     return this.analyzeImage(imageBuffer, mimeType, useFallback, customPrompt, metadata);
   }
 
-  private static getMimeTypeFromPath(imagePath: string): string {
-    const ext = imagePath.toLowerCase().split('.').pop();
-    
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'tiff':
-      case 'tif':
-        return 'image/tiff';
-      case 'webp':
-        return 'image/webp';
-      default:
-        return 'image/jpeg';
-    }
-  }
 
-  private static getFallbackAnalysis(): Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'> {
-    return {
-      description: 'Image analysis temporarily unavailable. Please try again later.',
-      caption: 'Image uploaded successfully',
-      keywords: ['image', 'photo', 'upload', 'content'],
-      confidence: 0.1
-    };
-  }
 
-  static async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<boolean> {
     try {
-      if (!this.model) {
+      if (!GeminiProvider.model) {
         this.initialize();
       }
 
@@ -184,7 +144,7 @@ export class GeminiService {
         0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3F, 0x00, 0x80, 0xFF, 0xD9
       ]);
 
-      const result = await this.model.generateContent([
+      const result = await GeminiProvider.model.generateContent([
         'What do you see in this image? Respond with just "test successful"',
         {
           inlineData: {
@@ -282,98 +242,25 @@ export class GeminiService {
     }
   }
 
-  /**
-   * Build metadata context string for enhanced AI analysis
-   */
-  private static buildMetadataContext(metadata: any): string | null {
-    if (!metadata) return null;
+}
 
-    const contextParts: string[] = [];
+// Backward compatibility - maintain static interface for existing code
+export class GeminiService {
+  private static provider = new GeminiProvider();
 
-    // Add camera and lens information
-    if (metadata.make || metadata.model || metadata.lens) {
-      const camera = [metadata.make, metadata.model].filter(Boolean).join(' ');
-      const lens = metadata.lens;
-      
-      if (camera && lens) {
-        contextParts.push(`Camera: ${camera} with ${lens}`);
-      } else if (camera) {
-        contextParts.push(`Camera: ${camera}`);
-      } else if (lens) {
-        contextParts.push(`Lens: ${lens}`);
-      }
-    }
-
-    // Add shooting settings for better context
-    const settings: string[] = [];
-    if (metadata.iso) settings.push(`ISO ${metadata.iso}`);
-    if (metadata.fNumber) settings.push(`f/${metadata.fNumber}`);
-    if (metadata.exposureTime) settings.push(`${metadata.exposureTime}s`);
-    if (metadata.focalLength) settings.push(`${metadata.focalLength}mm`);
-    
-    if (settings.length > 0) {
-      contextParts.push(`Settings: ${settings.join(', ')}`);
-    }
-
-    // Add location context if available
-    if (metadata.gps && metadata.gps.latitude && metadata.gps.longitude) {
-      contextParts.push(`GPS: ${metadata.gps.latitude}, ${metadata.gps.longitude}`);
-    } else if (metadata.latitude && metadata.longitude) {
-      contextParts.push(`GPS: ${metadata.latitude}, ${metadata.longitude}`);
-    }
-
-    // Add existing IPTC metadata context
-    if (metadata.city || metadata.state || metadata.country) {
-      const location = [metadata.city, metadata.state, metadata.country].filter(Boolean).join(', ');
-      contextParts.push(`Location: ${location}`);
-    }
-
-    if (metadata.creator || metadata.copyright) {
-      const rights = [metadata.creator, metadata.copyright].filter(Boolean).join(' - ');
-      contextParts.push(`Rights: ${rights}`);
-    }
-
-    // Add date context if available
-    if (metadata.dateTimeOriginal) {
-      try {
-        const date = new Date(metadata.dateTimeOriginal);
-        const year = date.getFullYear();
-        const month = date.getMonth() + 1;
-        const season = this.getSeason(month);
-        const timeOfDay = this.getTimeOfDay(date.getHours());
-        contextParts.push(`Captured: ${year} ${season}, ${timeOfDay}`);
-      } catch (e) {
-        // Ignore date parsing errors
-      }
-    }
-
-    if (contextParts.length === 0) return null;
-
-    return `METADATA CONTEXT for AI analysis:
-${contextParts.join('\n')}
-
-Please use this technical metadata to enhance your analysis with relevant context about the camera settings, location, and shooting conditions.`;
+  static initialize(): void {
+    this.provider.initialize();
   }
 
-  /**
-   * Helper to determine season from month
-   */
-  private static getSeason(month: number): string {
-    if (month >= 3 && month <= 5) return 'Spring';
-    if (month >= 6 && month <= 8) return 'Summer';
-    if (month >= 9 && month <= 11) return 'Fall';
-    return 'Winter';
+  static async analyzeImage(imageBuffer: Buffer, mimeType: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'>> {
+    return this.provider.analyzeImage(imageBuffer, mimeType, useFallback, customPrompt, metadata);
   }
 
-  /**
-   * Helper to determine time of day from hour
-   */
-  private static getTimeOfDay(hour: number): string {
-    if (hour >= 5 && hour < 8) return 'early morning';
-    if (hour >= 8 && hour < 12) return 'morning';
-    if (hour >= 12 && hour < 17) return 'afternoon';
-    if (hour >= 17 && hour < 20) return 'evening';
-    if (hour >= 20 && hour < 22) return 'dusk';
-    return 'night';
+  static async analyzeImageFromPath(imagePath: string, useFallback: boolean = false, customPrompt?: string, metadata?: any): Promise<Omit<GeminiAnalysis, 'id' | 'imageId' | 'analysisDate'>> {
+    return this.provider.analyzeImageFromPath(imagePath, useFallback, customPrompt, metadata);
+  }
+
+  static async testConnection(): Promise<boolean> {
+    return this.provider.testConnection();
   }
 }

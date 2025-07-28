@@ -1,6 +1,6 @@
 # AI Image Tagger
 
-An intelligent image tagging application powered by Google's Gemini AI that automatically generates descriptions, captions, and SEO-optimized keywords for your photos.
+An intelligent image tagging application powered by AI that automatically generates descriptions, captions, and SEO-optimized keywords for your photos. Supports both Google's Gemini AI and local Ollama inference.
 
 ## Features
 
@@ -13,11 +13,10 @@ An intelligent image tagging application powered by Google's Gemini AI that auto
 - **Default Admin**: Automatic admin user creation for initial setup
 
 ### 🤖 AI-Powered Analysis
-- **Google Gemini Integration**: Advanced AI analysis generating:
-  - Detailed image descriptions
-  - SEO-optimized captions
-  - Relevant keywords for discoverability
-  - Confidence scores for analysis quality
+- **Multiple AI Providers**: Choose between cloud and local AI:
+  - **Google Gemini**: Cloud-based advanced AI analysis
+  - **Ollama**: Local AI inference with privacy and no API costs
+- **Comprehensive Analysis**: Generates detailed image descriptions, SEO-optimized captions, relevant keywords, and confidence scores
 
 ### 📁 Batch Processing
 - **Folder Processing**: Process entire folders recursively
@@ -58,6 +57,7 @@ An intelligent image tagging application powered by Google's Gemini AI that auto
 - **Sharp** - High-performance image processing
 - **Multer** - File upload handling
 - **Gemini AI** - Google's generative AI for image analysis
+- **Ollama** - Local AI inference support
 - **ExifR** - EXIF data extraction and RAW preview extraction
 
 ### Frontend
@@ -71,7 +71,8 @@ An intelligent image tagging application powered by Google's Gemini AI that auto
 
 - Node.js 18+ 
 - npm or yarn
-- Google Gemini API key
+- **For Gemini AI**: Google Gemini API key
+- **For Ollama**: Ollama installation with a vision model (e.g., llava:latest)
 
 ## Installation
 
@@ -404,8 +405,16 @@ image-tagger/
 Environment variables in `.env`:
 
 ```bash
-# Gemini AI API Configuration
+# AI Provider Configuration
+AI_PROVIDER=gemini                    # 'gemini' or 'ollama'
+
+# Gemini AI Configuration (when AI_PROVIDER=gemini)
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# Ollama Configuration (when AI_PROVIDER=ollama)
+OLLAMA_BASE_URL=http://localhost:11434  # Ollama server URL
+OLLAMA_MODEL=llava:latest               # Vision model name
+OLLAMA_TIMEOUT=300000                   # Request timeout (5 minutes)
 
 # Authentication Configuration
 SESSION_SECRET=your-super-secret-session-key-change-in-production
@@ -425,7 +434,7 @@ MAX_FILE_SIZE=50000000
 
 # Image Processing Configuration
 THUMBNAIL_SIZE=300
-GEMINI_IMAGE_SIZE=1024
+AI_IMAGE_SIZE=1024                     # Image size for AI analysis
 ```
 
 ## Supported Image Formats
@@ -433,20 +442,122 @@ GEMINI_IMAGE_SIZE=1024
 - **Standard**: JPG, JPEG, PNG, TIFF, TIF
 - **RAW**: CR2 (Canon), NEF (Nikon), ARW (Sony), DNG (Adobe), RAF (Fujifilm), ORF (Olympus), RW2 (Panasonic)
 
+## AI Provider Setup
+
+### Using Gemini AI (Cloud-based)
+
+1. **Get a Gemini API key**:
+   - Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
+   - Create a new API key
+   - Add it to your `.env` file as `GEMINI_API_KEY`
+
+2. **Set the provider**:
+   ```bash
+   AI_PROVIDER=gemini
+   ```
+
+### Using Ollama (Local)
+
+1. **Install Ollama**:
+   ```bash
+   # macOS
+   brew install ollama
+   
+   # Linux
+   curl -fsSL https://ollama.ai/install.sh | sh
+   
+   # Windows: Download from https://ollama.ai/download
+   ```
+
+2. **Install a vision model**:
+   ```bash
+   ollama pull llava:latest
+   # Or other vision models like:
+   # ollama pull llava:13b
+   # ollama pull bakllava:latest
+   ```
+
+3. **Start Ollama server**:
+   ```bash
+   ollama serve
+   ```
+
+4. **Configure the application**:
+   ```bash
+   AI_PROVIDER=ollama
+   OLLAMA_BASE_URL=http://localhost:11434
+   OLLAMA_MODEL=llava:latest
+   ```
+
+### Provider-specific Features
+
+- **Gemini**: 
+  - Higher accuracy for complex scenes
+  - Better language understanding
+  - Requires internet connection
+  - API costs apply
+
+- **Ollama**:
+  - Complete privacy (local processing)
+  - No API costs after setup
+  - Works offline
+  - Requires more local resources
+
+## API Endpoints
+
+The application provides several new endpoints for AI provider management:
+
+- `GET /api/images/ai/provider/info` - Get current provider information
+- `GET /api/images/ai/providers` - List all available providers
+- `GET /api/images/ai/provider/test` - Test current provider connection
+- `GET /api/images/test/gemini` - Legacy endpoint (now tests current provider)
+
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"GEMINI_API_KEY environment variable is required"**
-   - Make sure you've set up your `.env` file with a valid Gemini API key
+#### General Issues
+
+1. **Upload fails with large files**
+   - Check the `MAX_FILE_SIZE` setting in `.env`
+   - Default limit is 50MB
 
 2. **"Failed to extract RAW preview"**
    - Some RAW formats may not be fully supported
    - Try converting to JPEG/TIFF first
 
-3. **Upload fails with large files**
-   - Check the `MAX_FILE_SIZE` setting in `.env`
-   - Default limit is 50MB
+#### Gemini AI Issues
+
+3. **"GEMINI_API_KEY environment variable is required"**
+   - Make sure you've set up your `.env` file with a valid Gemini API key
+   - Ensure `AI_PROVIDER=gemini` is set
+
+4. **Gemini API connection fails**
+   - Check your API key is valid and active
+   - Verify internet connectivity
+   - Check API quotas and billing in Google Cloud Console
+
+#### Ollama Issues
+
+5. **"Ollama server not accessible"**
+   - Ensure Ollama is running: `ollama serve`
+   - Check if the base URL is correct in `.env`
+   - Verify port 11434 is not blocked by firewall
+
+6. **"Model not found in Ollama"**
+   - Install the vision model: `ollama pull llava:latest`
+   - Check available models: `ollama list`
+   - Verify the model name in `OLLAMA_MODEL` matches exactly
+
+7. **Ollama requests timeout**
+   - Increase `OLLAMA_TIMEOUT` for large images
+   - Consider using a smaller/faster model
+   - Check system resources (RAM, CPU)
+
+8. **Poor quality results with Ollama**
+   - Try a larger model: `ollama pull llava:13b`
+   - Experiment with different vision models
+   - Adjust the custom prompt for better results
 
 4. **Database errors**
    - Delete `database.sqlite` to reset the database

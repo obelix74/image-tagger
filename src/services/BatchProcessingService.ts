@@ -4,11 +4,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { DatabaseService } from './DatabaseService';
 import { ImageProcessingService } from './ImageProcessingService';
 import { GeminiService } from './GeminiService';
+import { AIProviderFactory } from './AIProviderFactory';
 import { ImageMetadata } from '../types';
 
 export interface BatchProcessingOptions {
   thumbnailSize?: number;
-  geminiImageSize?: number;
+  aiImageSize?: number;
+  geminiImageSize?: number; // Legacy: use aiImageSize instead
   quality?: number;
   skipDuplicates?: boolean;
   parallelConnections?: number;
@@ -106,7 +108,7 @@ export class BatchProcessingService {
       folderPath,
       options: {
         thumbnailSize: options.thumbnailSize || parseInt(process.env.THUMBNAIL_SIZE || '300'),
-        geminiImageSize: options.geminiImageSize || parseInt(process.env.GEMINI_IMAGE_SIZE || '1024'),
+        aiImageSize: options.aiImageSize || options.geminiImageSize || parseInt(process.env.AI_IMAGE_SIZE || process.env.GEMINI_IMAGE_SIZE || '1024'),
         quality: options.quality || 85,
         skipDuplicates: options.skipDuplicates !== false,
         parallelConnections: options.parallelConnections || 1,
@@ -442,7 +444,7 @@ export class BatchProcessingService {
       // Process the image
       const processingOptions = {
         thumbnailSize: batchJob.options.thumbnailSize!,
-        geminiImageSize: batchJob.options.geminiImageSize!,
+        aiImageSize: batchJob.options.aiImageSize!,
         quality: batchJob.options.quality!
       };
 
@@ -806,8 +808,9 @@ export class BatchProcessingService {
       // Use localized prompts if available
       const prompt = batch.options.customPrompt || undefined;
 
-      // Analyze with Gemini (this will now throw errors instead of returning fallback)
-      const analysis = await GeminiService.analyzeImageFromPath(imagePath, false, prompt);
+      // Analyze with AI provider (this will now throw errors instead of returning fallback)
+      const aiProvider = AIProviderFactory.getProvider();
+      const analysis = await aiProvider.analyzeImageFromPath(imagePath, false, prompt);
 
       // Save analysis to database with extended metadata
       const analysisData = {
@@ -849,8 +852,9 @@ export class BatchProcessingService {
 
       console.log(`Starting AI analysis for image ${imageId}`);
 
-      // Analyze with Gemini (this will now throw errors instead of returning fallback)
-      const analysis = await GeminiService.analyzeImageFromPath(imagePath, false);
+      // Analyze with AI provider (this will now throw errors instead of returning fallback)
+      const aiProvider = AIProviderFactory.getProvider();
+      const analysis = await aiProvider.analyzeImageFromPath(imagePath, false);
 
       // Save analysis to database
       const analysisData = {
