@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Tagger - Intelligent Image Analysis & Organization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+            padding: 40px 0;
+        }
+        
+        .header h1 {
+            font-size: 3.5em;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.3em;
+            opacity: 0.9;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .main-content {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 40px;
+        }
+        
+        .section {
+            padding: 40px;
+        }
+        
+        .section:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .section h2 {
+            color: #2c3e50;
+            font-size: 2.2em;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .section h3 {
+            color: #34495e;
+            font-size: 1.5em;
+            margin: 25px 0 15px 0;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin: 30px 0;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+        }
+        
+        .feature-card h4 {
+            color: #2c3e50;
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .feature-card ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        
+        .feature-card li {
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .feature-card li::before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+        
+        .video-section {
+            text-align: center;
+            background: #f8f9fa;
+            padding: 50px 40px;
+        }
+        
+        .video-container {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+            padding-bottom: 56.25%;
+            height: 0;
+            overflow: hidden;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .tech-stack {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .tech-column {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .tech-column h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .tech-list {
+            list-style: none;
+        }
+        
+        .tech-list li {
+            margin: 8px 0;
+            padding: 5px 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+        
+        .cta-section {
+            text-align: center;
+            padding: 50px 40px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .cta-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: white;
+            color: #667eea;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+        }
+        
+        .btn-secondary:hover {
+            background: white;
+            color: #667eea;
+        }
+        
+        .footer {
+            text-align: center;
+            color: white;
+            opacity: 0.8;
+            padding: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.5em;
+            }
+            
+            .section {
+                padding: 30px 20px;
+            }
+            
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🤖 AI Image Tagger</h1>
+            <p>An intelligent image tagging application powered by AI that automatically generates descriptions, captions, and SEO-optimized keywords for your photos</p>
+        </header>
+
+        <main class="main-content">
+            <section class="section">
+                <h2>🚀 What is AI Image Tagger?</h2>
+                <p>AI Image Tagger is a powerful, intelligent application that revolutionizes how you organize and analyze your photo collections. Using advanced AI technology from Google Gemini and local Ollama inference, it automatically generates detailed descriptions, SEO-optimized captions, and relevant keywords for your images.</p>
+                
+                <p>Whether you're a photographer managing thousands of images, a content creator needing quick metadata, or just someone who wants better photo organization, AI Image Tagger streamlines your workflow with cutting-edge artificial intelligence.</p>
+            </section>
+
+            <section class="video-section">
+                <h2>🎥 See It In Action</h2>
+                <p style="margin-bottom: 30px; font-size: 1.1em; color: #666;">Watch this demo to see how AI Image Tagger transforms your photo management workflow</p>
+                <div class="video-container">
+                    <iframe src="https://www.youtube.com/embed/BbIjuASphtk" 
+                            frameborder="0" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowfullscreen>
+                    </iframe>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>✨ Key Features</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>🔐 Multi-User System</h4>
+                        <ul>
+                            <li>Secure username/password authentication</li>
+                            <li>Individual user accounts with admin privileges</li>
+                            <li>User isolation and session management</li>
+                            <li>Default admin setup for easy start</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <h4>🤖 AI-Powered Analysis</h4>
+                        <ul>
+                            <li>Google Gemini cloud-based AI</li>
+                            <li>Local Ollama inference for privacy</li>
+                            <li>Detailed image descriptions & captions</li>
+                            <li>SEO-optimized keywords generation</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <h4>📁 Batch Processing</h4>
+                        <ul>
+                            <li>Process entire folders recursively</li>
+                            <li>Automatic duplicate detection</li>
+                            <li>Real-time progress monitoring</li>
+                            <li>Comprehensive error handling</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <h4>🖼️ Format Support</h4>
+                        <ul>
+                            <li>Standard: JPEG, PNG, TIFF</li>
+                            <li>RAW: CR2, NEF, ARW, DNG, RAF, ORF, RW2</li>
+                            <li>Large files up to 50MB</li>
+                            <li>Automatic thumbnail generation</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <h4>🔍 Smart Search</h4>
+                        <ul>
+                            <li>Click keywords to find related images</li>
+                            <li>Full-text search across metadata</li>
+                            <li>Real-time filtering and pagination</li>
+                            <li>Advanced search capabilities</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <h4>🎨 Modern Interface</h4>
+                        <ul>
+                            <li>Drag-and-drop file uploads</li>
+                            <li>Responsive design for all devices</li>
+                            <li>Real-time processing updates</li>
+                            <li>Beautiful gallery view</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>🛠️ Tech Stack</h2>
+                <div class="tech-stack">
+                    <div class="tech-column">
+                        <h4>Backend</h4>
+                        <ul class="tech-list">
+                            <li>TypeScript</li>
+                            <li>Express.js</li>
+                            <li>SQLite Database</li>
+                            <li>Sharp Image Processing</li>
+                            <li>Google Gemini AI</li>
+                            <li>Ollama Integration</li>
+                            <li>ExifR RAW Support</li>
+                        </ul>
+                    </div>
+                    <div class="tech-column">
+                        <h4>Frontend</h4>
+                        <ul class="tech-list">
+                            <li>React</li>
+                            <li>TypeScript</li>
+                            <li>Vite Build Tool</li>
+                            <li>React Router</li>
+                            <li>Axios HTTP Client</li>
+                            <li>Responsive Design</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>🚦 Getting Started</h2>
+                <h3>Prerequisites</h3>
+                <ul style="margin-left: 20px; margin-bottom: 25px;">
+                    <li>Node.js 18+</li>
+                    <li>Google Gemini API key (for cloud AI) OR Ollama installation (for local AI)</li>
+                </ul>
+
+                <h3>Quick Setup</h3>
+                <div style="background: #f4f4f4; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <pre style="margin: 0; font-family: 'Courier New', monospace;">
+# Clone the repository
+git clone &lt;repository-url&gt;
+cd image-tagger
+
+# Run setup script
+./scripts/setup.sh    # Unix/Linux/Mac
+# or
+scripts\setup.bat     # Windows
+
+# Start the application
+./scripts/start.sh    # Unix/Linux/Mac
+# or  
+scripts\start.bat     # Windows
+                    </pre>
+                </div>
+
+                <h3>Access the Application</h3>
+                <p>After setup, open your browser and navigate to <strong>http://localhost:5173</strong></p>
+                <p><strong>Default Admin Login:</strong> Username: <code>admin</code>, Password: <code>admin123</code></p>
+            </section>
+
+            <section class="cta-section">
+                <h2>Ready to Transform Your Photo Management?</h2>
+                <p>Join thousands of users who have revolutionized their image organization workflow with AI-powered tagging and analysis.</p>
+                <div class="cta-buttons">
+                    <a href="https://github.com/obelix74/image-tagger" class="btn btn-primary">View on GitHub</a>
+                    <a href="https://github.com/obelix74/image-tagger/archive/main.zip" class="btn btn-secondary">Download Now</a>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>Made with ❤️ by <a href="https://github.com/obelix74" style="color: white;">Anand Kumar Sankaran</a> | Licensed for Non-Commercial Use</p>
+        </footer>
+    </div>
+</body>
+</html>
