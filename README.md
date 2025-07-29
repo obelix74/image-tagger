@@ -458,36 +458,147 @@ AI_IMAGE_SIZE=1024                     # Image size for AI analysis
 
 ### Using Ollama (Local)
 
-1. **Install Ollama**:
+#### Step 1: Install Ollama
+
+**macOS:**
+```bash
+# Using Homebrew (recommended)
+brew install ollama
+
+# Or download from website
+# Visit https://ollama.ai/download and download the macOS installer
+```
+
+**Linux:**
+```bash
+# Using the official install script
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Or manually download and install
+# Visit https://ollama.ai/download for manual installation
+```
+
+**Windows:**
+1. Visit https://ollama.ai/download
+2. Download the Windows installer
+3. Run the installer and follow the setup wizard
+4. Ollama will be available in your system PATH
+
+#### Step 2: Install a Vision Model
+
+After installing Ollama, you need to download a vision model that can analyze images:
+
+```bash
+# Download the recommended LLaVa model (7B parameters, ~4.7GB)
+ollama pull llava:latest
+
+# Alternative models (choose one):
+# Larger, more accurate model (13B parameters, ~7.3GB)
+ollama pull llava:13b
+
+# BakLLaVa model (alternative implementation)
+ollama pull bakllava:latest
+
+# Moondream model (smaller, faster, ~1.7GB)
+ollama pull moondream:latest
+```
+
+**Model Comparison:**
+- `llava:latest` (7B): Best balance of speed and accuracy (recommended)
+- `llava:13b`: Higher accuracy but slower and requires more RAM
+- `bakllava:latest`: Alternative LLaVa implementation
+- `moondream:latest`: Fastest but lower accuracy
+
+#### Step 3: Start Ollama Server
+
+```bash
+# Start the Ollama server (required for the application to work)
+ollama serve
+
+# The server will start on http://localhost:11434
+# Keep this terminal window open while using the application
+```
+
+**Verification:**
+Test that Ollama is running correctly:
+```bash
+# Test the server is responding
+curl http://localhost:11434/api/tags
+
+# Test your vision model
+ollama run llava:latest "Describe this image" --image /path/to/test/image.jpg
+```
+
+#### Step 4: Configure the Application
+
+Edit your `.env` file to use Ollama:
+```bash
+# Set Ollama as the AI provider
+AI_PROVIDER=ollama
+
+# Ollama server configuration
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llava:latest
+OLLAMA_TIMEOUT=300000
+
+# Optional: Adjust timeout for large images (in milliseconds)
+# Default is 5 minutes, increase if you have very large images
+```
+
+#### Step 5: Verify Setup
+
+1. **Start the Image Tagger application**:
    ```bash
-   # macOS
-   brew install ollama
-   
-   # Linux
-   curl -fsSL https://ollama.ai/install.sh | sh
-   
-   # Windows: Download from https://ollama.ai/download
+   npm run dev:both
    ```
 
-2. **Install a vision model**:
-   ```bash
-   ollama pull llava:latest
-   # Or other vision models like:
-   # ollama pull llava:13b
-   # ollama pull bakllava:latest
-   ```
+2. **Test the connection**:
+   - Go to http://localhost:5173
+   - Upload a test image
+   - Check that AI analysis works properly
 
-3. **Start Ollama server**:
+#### Troubleshooting Ollama Setup
+
+**Common Issues:**
+
+1. **"Connection refused" error**:
    ```bash
+   # Make sure Ollama server is running
    ollama serve
+   
+   # Check if port 11434 is available
+   netstat -an | grep 11434
    ```
 
-4. **Configure the application**:
+2. **"Model not found" error**:
    ```bash
-   AI_PROVIDER=ollama
-   OLLAMA_BASE_URL=http://localhost:11434
-   OLLAMA_MODEL=llava:latest
+   # List installed models
+   ollama list
+   
+   # Make sure your model name in .env matches exactly
+   # Check OLLAMA_MODEL=llava:latest
    ```
+
+3. **Slow processing**:
+   ```bash
+   # Check system resources
+   htop
+   
+   # Consider using a smaller model
+   ollama pull moondream:latest
+   # Then update .env: OLLAMA_MODEL=moondream:latest
+   ```
+
+4. **Out of memory errors**:
+   - Close other applications to free RAM
+   - Use a smaller model like `moondream:latest`
+   - Increase system swap space
+
+**Performance Tips:**
+- **RAM Requirements**: 8GB+ recommended for `llava:latest`, 16GB+ for `llava:13b`
+- **CPU**: Better performance with more CPU cores
+- **GPU**: Ollama can use GPU acceleration if available (NVIDIA/AMD)
+- **Storage**: Models require 2-8GB disk space each
 
 ### Provider-specific Features
 

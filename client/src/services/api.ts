@@ -312,6 +312,17 @@ export const imageApi = {
     return response.data;
   },
 
+  // Get AI provider info
+  getAIProviderInfo: async (): Promise<{ 
+    success: boolean; 
+    provider: 'gemini' | 'ollama'; 
+    status: 'connected' | 'disconnected';
+    error?: string;
+  }> => {
+    const response = await api.get('/images/ai/provider/info');
+    return response.data;
+  },
+
   // Get thumbnail URL by path (for gallery)
   getThumbnailUrl: (thumbnailPath: string): string => {
     return `${API_BASE_URL.replace('/api', '')}/thumbnails/${thumbnailPath.split('/').pop()}`;

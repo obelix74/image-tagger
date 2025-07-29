@@ -18,12 +18,29 @@ const BatchProcessing: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'ollama'>('gemini');
 
   useEffect(() => {
     loadBatches();
+    loadAIProvider();
     const interval = setInterval(loadBatches, 2000); // Refresh every 2 seconds
     return () => clearInterval(interval);
   }, []);
+
+  const loadAIProvider = async () => {
+    try {
+      const response = await imageApi.getAIProviderInfo();
+      if (response.success) {
+        setAiProvider(response.provider);
+      }
+    } catch (error) {
+      console.error('Failed to load AI provider info:', error);
+    }
+  };
+
+  const getProviderDisplayName = (provider: 'gemini' | 'ollama'): string => {
+    return provider === 'gemini' ? 'Gemini' : 'Ollama';
+  };
 
   const loadBatches = async () => {
     try {
@@ -214,7 +231,7 @@ const BatchProcessing: React.FC = () => {
 
             <div className="form-group">
               <label htmlFor="parallelConnections">
-                Parallel Gemini Connections: {options.parallelConnections}
+                Parallel {getProviderDisplayName(aiProvider)} Connections: {options.parallelConnections}
               </label>
               <input
                 id="parallelConnections"
