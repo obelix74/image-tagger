@@ -42,7 +42,7 @@ export class GeminiProvider extends BaseAIProvider {
     }
 
     // Prepare image for Gemini API with size limits
-    const processedImageBuffer = await this.prepareImageForGemini(imageBuffer);
+    const processedImageBuffer = await GeminiProvider.prepareImageForGemini(imageBuffer);
 
     let lastError: Error | null = null;
 

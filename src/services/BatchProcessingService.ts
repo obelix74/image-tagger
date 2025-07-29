@@ -444,7 +444,7 @@ export class BatchProcessingService {
       // Process the image
       const processingOptions = {
         thumbnailSize: batchJob.options.thumbnailSize!,
-        aiImageSize: batchJob.options.aiImageSize!,
+        geminiImageSize: batchJob.options.aiImageSize!,
         quality: batchJob.options.quality!
       };
 
